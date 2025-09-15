@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phone Controller: YouTube Embed</title>
+  <style>
+    :root{--bg:#0b0f13;--card:#121820;--muted:#7e8a99;--text:#f2f5f8;--accent:#5ee3ff;--accent2:#7affc3}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b0f13,#0e141b 40%,#0b0f13);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:20px auto;padding:20px}
+    .grid{display:grid;gap:16px;grid-template-columns:1.4fr .9fr}
+    .card{background:radial-gradient(80% 120% at 20% 0%,rgba(94,227,255,.07),transparent 60%),radial-gradient(100% 100% at 105% 0%,rgba(122,255,195,.07),transparent 55%),var(--card);border:1px solid rgba(255,255,255,.06);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .pad{padding:18px}
+    .title{font-size:20px;margin:0 0 10px 0}
+    .muted{color:var(--muted);font-size:14px}
+    .row{display:flex;gap:12px;align-items:center}
+    input[type="text"], select{width:100%;background:#0b1117;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 12px;color:var(--text);outline:none}
+    input::placeholder{color:#8a96a6}
+    button{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#001014;border:0;border-radius:12px;padding:12px 14px;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .iframe-wrap{position:relative;padding-top:56.25%;border-radius:16px;overflow:hidden;background:#000}
+    iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .qr{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px;background:#0b1117;border-radius:14px;border:1px dashed rgba(255,255,255,.12)}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;background:#0b1117;border:1px solid rgba(255,255,255,.08);border-radius:999px;font-size:12px}
+    code{background:#0b1117;border:1px solid rgba(255,255,255,.08);padding:2px 6px;border-radius:6px}
+    .hint{font-size:13px;color:var(--muted)}
+    .switch{display:flex;gap:16px;margin:10px 0 0}
+    label.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:#cfe2ff}
+    @media (max-width:900px){.grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 style="margin:0 0 8px">Phone‑Controlled YouTube Player</h1>
+    <p class="muted" id="modeDesc">Share this page via QR and control the video from your phone.</p>
+
+    <div class="grid">
+      <!-- Player -->
+      <section class="card pad">
+        <h2 class="title">Player</h2>
+        <div class="iframe-wrap"><iframe id="player" title="YouTube Player" allow="autoplay; fullscreen" allowfullscreen></iframe></div>
+        <div class="switch">
+          <label class="chk"><input id="muteToggle" type="checkbox" checked> Mute</label>
+          <label class="chk"><input id="loopToggle" type="checkbox" checked> Loop</label>
+          <label class="chk"><input id="relToggle" type="checkbox"> Show related</label>
+        </div>
+      </section>
+
+      <!-- Control / QR -->
+      <section class="card pad">
+        <h2 class="title" id="controlTitle">Controller</h2>
+        <div class="row">
+          <input id="ytInput" type="text" placeholder="Paste YouTube link or ID (video or playlist)"/>
+          <button id="applyBtn">Set</button>
+        </div>
+        <p class="hint">Examples: <code>https://www.youtube.com/watch?v=3HiqqWStTnE</code> · <code>3HiqqWStTnE</code> · <code>https://www.youtube.com/playlist?list=PL123...</code></p>
+        <div style="height:10px"></div>
+
+        <div class="qr">
+          <canvas id="qrc"></canvas>
+          <div>
+            <div class="pill">Room: <span id="roomOut"></span></div>
+            <div class="muted" style="margin-top:6px">Scan to open controller on your phone.</div>
+            <div class="muted" id="shareUrl" style="font-size:12px;word-break:break-all"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px" class="muted">
+          Tip: Open this page on the big screen (TV/projector). Then scan the QR with your phone to control it.
+        </div>
+      </section>
+    </div>
+
+    <div class="card pad" style="margin-top:16px">
+      <h3 class="title" style="font-size:16px">How it works</h3>
+      <ol class="muted" style="line-height:1.6">
+        <li>Everyone opens the same <em>room</em> URL (scan the QR).</li>
+        <li>Anyone can paste a YouTube link/ID; the player updates in real‑time.</li>
+        <li>No server required from you — this uses your Firebase project for sync.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- QR Code library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+  <!-- Firebase (Firestore) - you must fill your config below -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+    // 1) Fill in your Firebase config (Project settings ▶ Web app)
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      // Firestore only needs projectId; including others is fine
+    };
+
+    // --- utilities ---
+    const qs = new URLSearchParams(location.search);
+    const room = (qs.get('room') || crypto.getRandomValues(new Uint32Array(1))[0].toString(36)).slice(0,10);
+    const isController = qs.get('controller') === '1';
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const roomRef = doc(db, 'rooms', room);
+
+    const playerEl = document.getElementById('player');
+    const inputEl = document.getElementById('ytInput');
+    const applyBtn = document.getElementById('applyBtn');
+    const roomOut = document.getElementById('roomOut');
+    const shareUrlEl = document.getElementById('shareUrl');
+    const modeDesc = document.getElementById('modeDesc');
+    const controlTitle = document.getElementById('controlTitle');
+    const muteToggle = document.getElementById('muteToggle');
+    const loopToggle = document.getElementById('loopToggle');
+    const relToggle = document.getElementById('relToggle');
+
+    roomOut.textContent = room;
+
+    // Build controller URL and QR
+    const controllerUrl = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}&controller=1`;
+    shareUrlEl.textContent = controllerUrl;
+    QRCode.toCanvas(document.getElementById('qrc'), controllerUrl, { width: 120 });
+
+    // UI tweaks by mode
+    if (isController) {
+      modeDesc.textContent = 'You are in Controller mode — paste a link below.';
+      controlTitle.textContent = 'Controller (this device)';
+      window.scrollTo(0, document.body.scrollHeight);
+    } else {
+      modeDesc.textContent = 'This device is the Player — control it from your phone.';
+      controlTitle.textContent = 'Controller';
+    }
+
+    function parseYouTube(input){
+      input = input.trim();
+      const out = { type: 'video', videoId: null, listId: null };
+      // Playlist first
+      const listMatch = input.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+      if (listMatch) { out.type = 'playlist'; out.listId = listMatch[1]; return out; }
+      // Video URL or ID
+      const idMatch = input.match(/(?:v=|youtu\.be\/|embed\/)?([a-zA-Z0-9_-]{11})/);
+      if (idMatch) { out.videoId = idMatch[1]; return out; }
+      return null;
+    }
+
+    function buildSrc(state){
+      const params = new URLSearchParams();
+      params.set('autoplay','1');
+      if (muteToggle.checked) params.set('mute','1');
+      params.set('enablejsapi','1');
+      params.set('iv_load_policy','3');
+      params.set('rel', relToggle.checked ? '1' : '0');
+      if (state.type === 'video'){
+        if (loopToggle.checked){
+          params.set('loop','1');
+          params.set('playlist', state.videoId);
+        }
+        return `https://www.youtube.com/embed/${state.videoId}?${params.toString()}`;
+      } else {
+        // playlist
+        return `https://www.youtube.com/embed/videoseries?list=${state.listId}&${params.toString()}`;
+      }
+    }
+
+    function render(state){
+      if (!state) return;
+      const src = buildSrc(state);
+      if (playerEl.src !== src){
+        playerEl.src = src;
+      }
+    }
+
+    // Create room doc if missing
+    async function ensureRoom(){
+      try{
+        await setDoc(roomRef, { type:'video', videoId:'dQw4w9WgXcQ', listId:null }, { merge: true });
+      }catch(e){ console.error(e); }
+    }
+
+    // Re-render on toggle changes
+    [muteToggle, loopToggle, relToggle].forEach(el=>{
+      el.addEventListener('change', async ()=>{
+        const snap = currentState; // use last known state
+        render(snap);
+      });
+    });
+
+    let currentState = null;
+
+    // Live updates
+    onSnapshot(roomRef, (snap)=>{
+      if (snap.exists()){
+        currentState = snap.data();
+        render(currentState);
+      }
+    });
+
+    ensureRoom();
+
+    // Controller action
+    applyBtn.addEventListener('click', async ()=>{
+      const parsed = parseYouTube(inputEl.value);
+      if (!parsed){
+        applyBtn.textContent = 'Invalid link/ID';
+        setTimeout(()=>applyBtn.textContent='Set', 1200);
+        return;
+      }
+      await updateDoc(roomRef, parsed);
+      applyBtn.textContent = 'Updated!';
+      setTimeout(()=>applyBtn.textContent='Set', 900);
+      inputEl.value = '';
+    });
+
+    // Enter key submits
+    inputEl.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') applyBtn.click();
+    });
+  </script>
+
+  <!-- Optional: basic Firestore rules you can start with (READ THE NOTE BELOW)
+  Firestore ▶ Rules (for quick testing only — open access expires in 30 days on new projects):
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /{document=**} {
+        allow read, write: if true;
+      }
+    }
+  }
+  For production, restrict by room ID and add a shared secret.
+  -->
+</body>
+</html>
+
