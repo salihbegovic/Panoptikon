@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube Grid – Fullscreen Wall</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0b0c10;
+      color: #e8ecf1;
+    }
+    .wrap {
+      max-width: 1800px;
+      margin: 20px auto;
+      padding: 12px;
+    }
+    h1 {
+      font-size: clamp(20px,3.2vw,30px);
+      margin: 0 0 12px;
+    }
+    .hint { color: #a7b0bb; font-size: 14px; margin-bottom: 10px; }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 8px 0;
+    }
+    input[type="number"] {
+      width: 80px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #2a303d;
+      background: #0f1320;
+      color: #e8ecf1;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid #2a303d;
+      background: #111827;
+      color: #e8ecf1;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    table { border-collapse: separate; border-spacing: 6px; margin: auto; width: auto; }
+    td { background: #0d1117; border: 1px solid #1c2230; border-radius: 8px; padding: 0; }
+    iframe { display: block; border: 0; border-radius: 6px; }
+
+    .error {
+      background: #2b1414;
+      border: 1px solid #3b1a1a;
+      color: #ffd5d5;
+      padding: 10px;
+      border-radius: 10px;
+      white-space: pre-wrap;
+    }
+
+    /* Fullscreen overrides */
+    :fullscreen #gridWrapper table {
+      width: 100%;
+      height: 100%;
+      border-spacing: 2px;
+    }
+    :fullscreen #gridWrapper td {
+      padding: 0;
+    }
+    :fullscreen #gridWrapper iframe {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📺 YouTube Grid – Fullscreen Wall</h1>
+    <div class="hint">
+      Pulls links from your shared Google Sheet and arranges them in a table grid.
+    </div>
+
+    <div class="controls">
+      <label>Columns: <input id="cols" type="number" min="1" max="12" value="2"></label>
+      <button id="reload">Rebuild Grid</button>
+      <button id="fullscreenBtn">Fullscreen</button>
+    </div>
+
+    <div id="status" class="hint"></div>
+    <div id="error" class="error" style="display:none"></div>
+
+    <div id="gridWrapper">
+      <table><tbody id="tbody"></tbody></table>
+    </div>
+  </div>
+
+  <script>
+    // --- CONFIG ---
+    const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?output=csv";
+    const MAX_VIDEOS = 200;
+
+    function embedUrl(id) {
+      const params = new URLSearchParams({
+        autoplay: "1",
+        wmode: "opaque",
+        autohide: "1",
+        mute: "1",
+        loop: "1",
+        enablejsapi: "1",
+        start: "0",
+        iv_load_policy: "3",
+        rel: "0",
+        playlist: id
+      });
+      return `https://www.youtube.com/embed/${id}?${params.toString()}`;
+    }
+
+    function ytId(x) {
+      if (!x) return null;
+      x = (""+x).trim();
+      if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return x;
+      if (!/^https?:\/\//i.test(x)) x = "https://" + x;
+      let u; try { u = new URL(x); } catch { return null; }
+      if (u.hostname.replace("www.","") === "youtu.be") {
+        const id = u.pathname.split("/").filter(Boolean)[0];
+        return id && id.length >= 5 ? id.slice(0,11) : null;
+      }
+      if (!u.hostname.endsWith("youtube.com")) return null;
+      const v = u.searchParams.get("v");
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+      const m1 = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/); if (m1) return m1[1].slice(0,11);
+      const m2 = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/); if (m2) return m2[1].slice(0,11);
+      const tail = u.pathname.split("/").filter(Boolean).pop();
+      if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) return tail.slice(0,11);
+      return null;
+    }
+
+    async function fetchLinks(url) {
+      const res = await fetch(url, { credentials: "omit", cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
+      const text = await res.text();
+      if (/ServiceLogin|accounts\\.google\\.com/i.test(text)) throw new Error("Got a Google sign-in page. Make sure the sheet is public (Anyone with link).");
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
+      if (values.length && !ytId(values[0])) values.shift();
+      return Array.from(new Set(values.map(ytId).filter(Boolean))).slice(0, MAX_VIDEOS);
+    }
+
+    function buildTable(ids, cols) {
+      const tbody = document.getElementById("tbody");
+      tbody.innerHTML = "";
+      let row;
+      ids.forEach((id, i) => {
+        if (i % cols === 0) {
+          row = document.createElement("tr");
+          tbody.appendChild(row);
+        }
+        const td = document.createElement("td");
+        const ifr = document.createElement("iframe");
+        ifr.id = `playeryt${i+1}`;
+        ifr.type = "text/html";
+        ifr.src = embedUrl(id);
+        ifr.scrolling = "no";
+        ifr.frameBorder = "0";
+        ifr.allowFullscreen = true;
+        ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope";
+        td.appendChild(ifr);
+        row.appendChild(td);
+      });
+    }
+
+    async function init() {
+      const status = document.getElementById("status");
+      const error = document.getElementById("error");
+      error.style.display = "none";
+      status.textContent = "Loading links…";
+      try {
+        const ids = await fetchLinks(SHEET_URL);
+        status.textContent = `Loaded ${ids.length} video${ids.length===1?"":"s"}.`;
+        const cols = +document.getElementById("cols").value || 5;
+        buildTable(ids, cols);
+      } catch (e) {
+        status.textContent = "";
+        error.textContent = e.message;
+        error.style.display = "block";
+        console.error(e);
+      }
+    }
+
+    document.getElementById("reload").addEventListener("click", init);
+    document.getElementById("fullscreenBtn").addEventListener("click", () => {
+      const wrapper = document.getElementById("gridWrapper");
+      if (!document.fullscreenElement) {
+        wrapper.requestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
+

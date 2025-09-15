@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YouTube Tile Wall (Remote Sheet)</title>
+<style>
+  :root{--bg:#0b0c10;--panel:#111319;--text:#e8ecf1;--muted:#a7b0bb}
+  *{box-sizing:border-box} body{margin:0;background:#0b0c10;color:var(--text);font-family:system-ui,Segoe UI,Roboto}
+  .wrap{max-width:1100px;margin:24px auto;padding:16px}
+  h1{font-size:clamp(22px,4vw,32px);margin:0 0 10px}
+  .card{background:var(--panel);border:1px solid #1c2230;border-radius:14px;padding:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:14px}
+  .tile{background:#0d1117;border:1px solid #1c2230;border-radius:14px;overflow:hidden}
+  .thumb{position:relative;aspect-ratio:16/9}
+  .thumb img,.thumb iframe{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0}
+  .hint{color:var(--muted);font-size:14px}
+  .error{background:#2b1414;border:1px solid #3b1a1a;color:#ffd5d5;padding:10px;border-radius:10px;margin-top:10px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📺 YouTube Tile Wall</h1>
+  <div class="card">
+    <div class="hint">
+      This page pulls links from a shared sheet. Update the sheet remotely → refresh here to see new tiles.
+    </div>
+    <div id="status" class="hint" style="margin-top:8px"></div>
+    <div id="error" class="error" style="display:none"></div>
+  </div>
+
+  <div id="grid" class="grid"></div>
+</div>
+
+<script>
+/** 1) Put your published/exported sheet URL here */
+const SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?output=csv";
+
+/** 2) Optional: limit number of videos shown */
+const MAX_VIDEOS = 200;
+
+/** Utility: parse a YouTube ID from many link formats or raw ID */
+function ytId(x) {
+  if (!x) return null;
+  x = (""+x).trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return x;
+
+  // Normalize
+  if (!/^https?:\/\//i.test(x)) x = "https://" + x;
+  let u; try { u = new URL(x); } catch { return null; }
+
+  // youtu.be/<id>
+  if (u.hostname.replace("www.","")==="youtu.be") {
+    const id = u.pathname.split("/").filter(Boolean)[0];
+    return id && id.length>=5 ? id.slice(0,11) : null;
+  }
+  // youtube.com variants
+  if (!u.hostname.endsWith("youtube.com")) return null;
+  const v = u.searchParams.get("v");
+  if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+  const mShorts = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
+  if (mShorts) return mShorts[1].slice(0,11);
+  const mEmb = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
+  if (mEmb) return mEmb[1].slice(0,11);
+  const tail = u.pathname.split("/").filter(Boolean).pop();
+  if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) return tail.slice(0,11);
+  return null;
+}
+
+/** Fetch + parse CSV/TSV/plain */
+async function fetchLinks(url) {
+  const res = await fetch(url, { credentials: "omit", cache: "no-store" });
+  if (!res.ok) {
+    const msg = `HTTP ${res.status} ${res.statusText}\nURL: ${url}\n` +
+                (res.status===404 ? "This usually means the link is NOT a published/export URL or the sheet is not public." : "");
+    throw new Error(msg);
+  }
+  const text = await res.text();
+
+  // Detect common blockers
+  if (/ServiceLogin/i.test(text) || /accounts\.google\.com/i.test(text)) {
+    throw new Error("Got a Google sign-in page. Make sure the sheet is public (Anyone with the link) OR use a published/export CSV URL.");
+  }
+  if (/Not Found/i.test(text) && url.includes("/file/d/")) {
+    throw new Error("That looks like a Drive file link. Use a Sheets publish/export CSV link instead.");
+  }
+
+  // Split into lines; accept CSV/TSV or one-per-line
+  const lines = text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  // If CSV/TSV, grab first column; otherwise treat as single column
+  const values = lines.map(l => {
+    if (l.includes(",") || l.includes("\t")) return l.split(/,|\t/)[0].trim();
+    return l;
+  });
+
+  // Drop header if it doesn't look like a URL/ID
+  if (values.length && !ytId(values[0])) values.shift();
+
+  // Map to IDs, uniq, cap
+  const ids = Array.from(new Set(values.map(ytId).filter(Boolean))).slice(0, MAX_VIDEOS);
+  return ids;
+}
+
+function embedUrl(id) { return `https://www.youtube.com/embed/${id}?rel=0`; }
+function thumbUrl(id){ return `https://img.youtube.com/vi/${id}/hqdefault.jpg`; }
+
+function render(ids) {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  ids.forEach(id => {
+    const tile = document.createElement("div");
+    tile.className = "tile";
+    const th = document.createElement("div");
+    th.className = "thumb";
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.src = thumbUrl(id);
+    img.alt = "YouTube thumbnail";
+    th.appendChild(img);
+    th.addEventListener("click", () => {
+      const ifr = document.createElement("iframe");
+      ifr.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+      ifr.referrerPolicy = "strict-origin-when-cross-origin";
+      ifr.src = embedUrl(id);
+      th.innerHTML = "";
+      th.appendChild(ifr);
+    }, { once: true });
+    tile.appendChild(th);
+    grid.appendChild(tile);
+  });
+}
+
+(async function init(){
+  const status = document.getElementById("status");
+  const errEl = document.getElementById("error");
+  status.textContent = "Loading links…";
+  errEl.style.display = "none";
+  try {
+    const ids = await fetchLinks(SHEET_URL);
+    status.textContent = `Loaded ${ids.length} video${ids.length===1?"":"s"}.`;
+    render(ids);
+  } catch (e) {
+    status.textContent = "";
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>
+
