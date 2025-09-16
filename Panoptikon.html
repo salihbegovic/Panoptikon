@@ -3,73 +3,34 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panoptikon 2.1</title>
+  <title>Panoptikon 2.2 — Videos & Playlists</title>
   <style>
-    body {
-      margin: 0;
-      font-family: system-ui, sans-serif;
-      background: #0b0c10;
-      color: #e8ecf1;
-    }
-    .wrap {
-      max-width: 1800px;
-      margin: 20px auto;
-      padding: 12px;
-    }
+    body { margin:0; font-family: system-ui, sans-serif; background:#0b0c10; color:#e8ecf1; }
+    .wrap { max-width: 1800px; margin: 20px auto; padding: 12px; }
     h1 { font-size: clamp(20px,3.2vw,30px); margin: 0 0 12px; }
-    .hint { color: #a7b0bb; font-size: 14px; margin-bottom: 10px; }
-    .controls {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin: 8px 0;
-    }
-    input[type="number"], select {
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid #2a303d;
-      background: #0f1320;
-      color: #e8ecf1;
-    }
-    input[type="number"] { width: 80px; }
-    button {
-      cursor: pointer;
-      border: 1px solid #2a303d;
-      background: #111827;
-      color: #e8ecf1;
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-weight: 600;
-    }
-    table { border-collapse: separate; border-spacing: 6px; margin: auto; width: auto; }
-    td { background: #0d1117; border: 1px solid #1c2230; border-radius: 8px; padding: 0; }
-    iframe { display: block; border: 0; border-radius: 6px; width: 560px; height: 315px; }
-    .error {
-      background: #2b1414;
-      border: 1px solid #3b1a1a;
-      color: #ffd5d5;
-      padding: 10px;
-      border-radius: 10px;
-      white-space: pre-wrap;
-    }
-    #gridWrapper:fullscreen {
-      width: 100vw; height: 100vh; margin: 0;
-    }
-    #gridWrapper:fullscreen table {
-      width: 100%; height: 100%; border-spacing: 2px;
-    }
-    #gridWrapper:fullscreen td { padding: 0; }
-    #gridWrapper:fullscreen iframe { width: 100%; height: 100%; }
-    #gridWrapper:-webkit-full-screen { width: 100vw; height: 100vh; }
-    #gridWrapper:-webkit-full-screen table { width: 100%; height: 100%; border-spacing: 2px; }
-    #gridWrapper:-webkit-full-screen td { padding: 0; }
-    #gridWrapper:-webkit-full-screen iframe { width: 100%; height: 100%; }
+    .hint { color:#a7b0bb; font-size:14px; margin-bottom:10px; }
+    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+    input[type="number"], select { padding:6px 8px; border-radius:8px; border:1px solid #2a303d; background:#0f1320; color:#e8ecf1; }
+    input[type="number"] { width:80px; }
+    button { cursor:pointer; border:1px solid #2a303d; background:#111827; color:#e8ecf1; padding:8px 12px; border-radius:10px; font-weight:600; }
+    table { border-collapse:separate; border-spacing:6px; margin:auto; width:auto; }
+    td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; }
+    iframe { display:block; border:0; border-radius:6px; width:560px; height:315px; }
+    .error { background:#2b1414; border:1px solid #3b1a1a; color:#ffd5d5; padding:10px; border-radius:10px; white-space:pre-wrap; }
+    #gridWrapper:fullscreen { width:100vw; height:100vh; margin:0; }
+    #gridWrapper:fullscreen table { width:100%; height:100%; border-spacing:2px; }
+    #gridWrapper:fullscreen td { padding:0; }
+    #gridWrapper:fullscreen iframe { width:100%; height:100%; }
+    #gridWrapper:-webkit-full-screen { width:100vw; height:100vh; }
+    #gridWrapper:-webkit-full-screen table { width:100%; height:100%; border-spacing:2px; }
+    #gridWrapper:-webkit-full-screen td { padding:0; }
+    #gridWrapper:-webkit-full-screen iframe { width:100%; height:100%; }
+    .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>📺 Panoptikon 2.1</h1>
+    <h1>📺 Panoptikon 2.2 <span class="badge">now supports YouTube playlists</span></h1>
     <img src="QRCode.png" alt="QR Code" width="200" height="200">
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
@@ -101,14 +62,14 @@
       { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" }
     ];
     const STORAGE_KEY = "panoptikon_source_index";
-    const MAX_VIDEOS = 200;
+    const MAX_ITEMS = 200; // videos or playlists
     const POS_PREFIX = "panoptikon_time_";
 
-    function saveTime(videoId, seconds) {
-      try { localStorage.setItem(POS_PREFIX + videoId, String(Math.floor(seconds))); } catch {}
+    function saveTime(key, seconds) {
+      try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
     }
-    function loadTime(videoId) {
-      const v = +localStorage.getItem(POS_PREFIX + videoId);
+    function loadTime(key) {
+      const v = +localStorage.getItem(POS_PREFIX + key);
       return Number.isFinite(v) && v > 0 ? v : 0;
     }
     function resetProgress() {
@@ -118,50 +79,81 @@
       init();
     }
 
-    function embedUrl(id) {
-      const params = new URLSearchParams({
-        autoplay: "1", mute: "1", loop: "1", playlist: id,
-        wmode: "opaque", autohide: "1", enablejsapi: "1",
-        start: "0", iv_load_policy: "3", rel: "0", playsinline: "1"
-      });
-      return `https://www.youtube.com/embed/${id}?${params.toString()}`;
-    }
-
-    function ytId(x) {
+    // Parse a YouTube value into a normalized item { kind:"video"|"playlist", id:string }
+    function parseYouTube(x) {
       if (!x) return null;
       x = (""+x).trim();
-      if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return x;
+      // raw video id
+      if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return { kind:"video", id:x };
       if (!/^https?:\/\//i.test(x)) x = "https://" + x;
       let u; try { u = new URL(x); } catch { return null; }
-      if (u.hostname.replace("www.","") === "youtu.be") return u.pathname.split("/").filter(Boolean)[0]?.slice(0,11);
-      if (!u.hostname.endsWith("youtube.com")) return null;
+      const host = u.hostname.replace(/^www\./,"");
+      const list = u.searchParams.get("list");
+
+      // youtu.be short links may still carry ?list=
+      if (host === "youtu.be") {
+        const vid = u.pathname.split("/").filter(Boolean)[0];
+        if (list) return { kind:"playlist", id:list };
+        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) return { kind:"video", id:vid };
+        return null;
+      }
+
+      if (!/youtube\.com$/.test(host)) return null;
+
+      // If a playlist id is present anywhere, treat it as playlist
+      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list)) {
+        return { kind:"playlist", id:list };
+      }
+
+      // Try video id from known routes/params
       const v = u.searchParams.get("v");
-      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
-      const m1 = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/); if (m1) return m1[1].slice(0,11);
-      const m2 = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/); if (m2) return m2[1].slice(0,11);
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return { kind:"video", id:v };
+      const m1 = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
+      if (m1) return { kind:"video", id:m1[1].slice(0,11) };
+      const m2 = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
+      if (m2) return { kind:"video", id:m2[1].slice(0,11) };
       const tail = u.pathname.split("/").filter(Boolean).pop();
-      if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) return tail.slice(0,11);
+      if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) return { kind:"video", id:tail.slice(0,11) };
       return null;
     }
 
-    async function fetchLinks(url) {
+    function embedUrl(item) {
+      const common = {
+        autoplay: "1", mute: "1", loop: "1",
+        wmode: "opaque", autohide: "1", enablejsapi: "1",
+        start: "0", iv_load_policy: "3", rel: "0", playsinline: "1"
+      };
+      const params = new URLSearchParams(common);
+      if (item.kind === "video") {
+        // Loop a single video by setting playlist to itself
+        params.set("playlist", item.id);
+        return `https://www.youtube.com/embed/${item.id}?${params.toString()}`;
+      } else {
+        // Playlist embed
+        params.set("listType", "playlist");
+        params.set("list", item.id);
+        return `https://www.youtube.com/embed?${params.toString()}`;
+      }
+    }
+
+    async function fetchItems(url) {
       const res = await fetch(url, { credentials: "omit", cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
       const text = await res.text();
       if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
       const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
-      if (values.length && !ytId(values[0])) values.shift();
-      const ids = values.map(ytId).filter(Boolean);
-      if (document.getElementById("allowDuplicates").checked) {
-        return ids.slice(0, MAX_VIDEOS);
-      } else {
-        return Array.from(new Set(ids)).slice(0, MAX_VIDEOS);
+      // Skip header row if first value isn't a YT link/id
+      if (values.length && !parseYouTube(values[0])) values.shift();
+      let items = values.map(parseYouTube).filter(Boolean);
+      if (!document.getElementById("allowDuplicates").checked) {
+        const seen = new Set();
+        items = items.filter(it => { const key = `${it.kind}:${it.id}`; if (seen.has(key)) return false; seen.add(key); return true; });
       }
+      return items.slice(0, MAX_ITEMS);
     }
 
-    // ... keep rest of the original initPlayers, buildTable, resizeForFullscreen, etc.
-
+    // YouTube Iframe API
     let ytApiReady = false;
     function ensureYouTubeAPI() {
       if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
@@ -177,43 +169,43 @@
 
     function initPlayers() {
       if (!ytApiReady) return;
-      const iframes = Array.from(document.querySelectorAll("#tbody iframe[data-video-id]"));
+      const iframes = Array.from(document.querySelectorAll("#tbody iframe[data-progress-key]"));
       iframes.forEach((ifr) => {
         if (ifr.dataset.bound === "1") return;
-        const videoId = ifr.dataset.videoId;
+        const pkey = ifr.dataset.progressKey;
         const player = new YT.Player(ifr.id, {
           events: {
             onReady: (e) => {
-              const t = loadTime(videoId);
+              const t = loadTime(pkey);
               if (t > 1) { try { e.target.seekTo(t, true); } catch {} }
               try { e.target.playVideo(); } catch {}
             },
             onStateChange: (e) => {
-              try { const cur = e.target.getCurrentTime?.(); if (Number.isFinite(cur)) saveTime(videoId, cur); } catch {}
+              try { const cur = e.target.getCurrentTime?.(); if (Number.isFinite(cur)) saveTime(pkey, cur); } catch {}
             }
           }
         });
         const intervalId = setInterval(() => {
-          try { const cur = player.getCurrentTime(); if (Number.isFinite(cur)) saveTime(videoId, cur); } catch {}
+          try { const cur = player.getCurrentTime(); if (Number.isFinite(cur)) saveTime(pkey, cur); } catch {}
         }, 3000);
         playerIntervals.set(ifr.id, intervalId);
         ifr.dataset.bound = "1";
       });
     }
 
-    function buildTable(ids, cols) {
+    function buildTable(items, cols) {
       const tbody = document.getElementById("tbody");
       clearPlayerIntervals();
       tbody.innerHTML = "";
       let row;
-      ids.forEach((id, i) => {
+      items.forEach((item, i) => {
         if (i % cols === 0) { row = document.createElement("tr"); tbody.appendChild(row); }
         const td = document.createElement("td");
         const ifr = document.createElement("iframe");
-        const iframeId = `playeryt_${id}_${i+1}`;
-        ifr.id = iframeId; ifr.src = embedUrl(id);
+        const iframeId = `playeryt_${item.kind}_${item.id}_${i+1}`;
+        ifr.id = iframeId; ifr.src = embedUrl(item);
         ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope";
-        ifr.dataset.videoId = id;
+        ifr.dataset.progressKey = `${item.kind}:${item.id}`;
         td.appendChild(ifr); row.appendChild(td);
       });
       ensureYouTubeAPI();
@@ -253,10 +245,11 @@
       error.style.display = "none";
       status.textContent = "Loading links…";
       try {
-        const ids = await fetchLinks(currentSourceUrl());
-        status.textContent = `Loaded ${ids.length} video${ids.length===1?"":"s"}.`;
+        const items = await fetchItems(currentSourceUrl());
+        const counts = items.reduce((acc, it) => { acc[it.kind]++; return acc; }, {video:0, playlist:0});
+        status.textContent = `Loaded ${items.length} item${items.length===1?"":"s"} — ${counts.video} video(s), ${counts.playlist} playlist(s).`;
         const cols = +document.getElementById("cols").value || 2;
-        buildTable(ids, cols);
+        buildTable(items, cols);
       } catch (e) {
         status.textContent = "";
         error.textContent = e.message; error.style.display = "block"; console.error(e);
