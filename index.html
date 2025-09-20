@@ -3,15 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panoptikon 2.3 — Videos & Playlists</title>
+  <title>Panoptikon 2.4 — Videos & Playlists</title>
   <style>
     body { margin:0; font-family: system-ui, sans-serif; background:#0b0c10; color:#e8ecf1; }
     .wrap { max-width: 1800px; margin: 20px auto; padding: 12px; }
     h1 { font-size: clamp(20px,3.2vw,30px); margin: 0 0 12px; }
     .hint { color:#a7b0bb; font-size:14px; margin-bottom:10px; }
     .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-    input[type="number"], select { padding:6px 8px; border-radius:8px; border:1px solid #2a303d; background:#0f1320; color:#e8ecf1; }
+    input[type="number"], select, input[type="text"], input[type="password"] {
+      padding:6px 8px; border-radius:8px; border:1px solid #2a303d; background:#0f1320; color:#e8ecf1;
+    }
     input[type="number"] { width:80px; }
+    input[type="text"] { width:260px; }
+    input[type="password"] { width:300px; }
     button { cursor:pointer; border:1px solid #2a303d; background:#111827; color:#e8ecf1; padding:8px 12px; border-radius:10px; font-weight:600; }
     table { border-collapse:separate; border-spacing:6px; margin:auto; width:auto; }
     td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; }
@@ -30,7 +34,7 @@
     #gridWrapper:-webkit-full-screen iframe { width:100%; height:100%; }
     .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
     .toggle-on { background:#0b3a2b; border-color:#134e4a; }
-      /* Swap-mode UX: make clicks go to parent cells, not the YouTube iframe */
+    /* Swap-mode UX: make clicks go to parent cells, not the YouTube iframe */
     .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
     .swap-mode .cell { cursor: crosshair; }
     .swap-mode .cell.swap-pending { outline:2px dashed #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
@@ -38,9 +42,10 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>📺 Panoptikon 2.3 <span class="badge">(HURENSOHN EDITION)</span></h1>
-    <img src="QRCode.png" alt="QR Code" width="200" height="200"><br> <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
-    
+    <h1>📺 Panoptikon 2.4 <span class="badge">(HURENSOHN EDITION)</span></h1>
+    <img src="QRCode.png" alt="QR Code" width="200" height="200"><br>
+    <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
+
     <div class="controls">
       <label>Source:
         <select id="sourceSelect" title="Choose data source"></select>
@@ -51,6 +56,21 @@
       <button id="fullscreenBtn">Fullscreen</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
+    </div>
+
+    <!-- YouTube Search (API-based) -->
+    <div class="controls">
+      <input id="searchInput" type="text" placeholder="Search YouTube (e.g. ambient music)" />
+      <button id="searchFillBtn" title="Fill n×n grid with top results for this query">Search Fill</button>
+      <button id="randomFillBtn" title="Fill n×n grid with random results for this query">Random Fill</button>
+      <span class="hint">Fills the grid quadratically (columns² videos) using embeddable results.</span>
+    </div>
+
+    <!-- API key row (stored locally) -->
+    <div class="controls">
+      <input id="ytApiKey" type="password" placeholder="YouTube Data API key (stored locally)" />
+      <button id="saveKeyBtn">Save Key</button>
+      <span class="hint" id="keyStatus"></span>
     </div>
 
     <div id="status" class="hint"></div>
@@ -70,8 +90,10 @@
       { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" }
     ];
     const STORAGE_KEY = "panoptikon_source_index";
-    const MAX_ITEMS = 200; // videos or playlists
     const POS_PREFIX = "panoptikon_time_";
+    const KEY_STORE = "panoptikon_yt_api_key";
+    const REGION_CODE = "AT"; // you can change this if needed
+    const MAX_ITEMS = 200; // videos or playlists
 
     function saveTime(key, seconds) {
       try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
@@ -87,18 +109,16 @@
       init();
     }
 
-    // Parse a YouTube value into a normalized item { kind:"video"|"playlist", id:string }
+    // ——— Parse YouTube values from sheets
     function parseYouTube(x) {
       if (!x) return null;
       x = (""+x).trim();
-      // raw video id
       if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return { kind:"video", id:x };
       if (!/^https?:\/\//i.test(x)) x = "https://" + x;
       let u; try { u = new URL(x); } catch { return null; }
       const host = u.hostname.replace(/^www\./,"");
       const list = u.searchParams.get("list");
 
-      // youtu.be short links may still carry ?list=
       if (host === "youtu.be") {
         const vid = u.pathname.split("/").filter(Boolean)[0];
         if (list) return { kind:"playlist", id:list };
@@ -108,12 +128,7 @@
 
       if (!/youtube\.com$/.test(host)) return null;
 
-      // If a playlist id is present anywhere, treat it as playlist
-      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list)) {
-        return { kind:"playlist", id:list };
-      }
-
-      // Try video id from known routes/params
+      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list)) return { kind:"playlist", id:list };
       const v = u.searchParams.get("v");
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return { kind:"video", id:v };
       const m1 = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
@@ -126,22 +141,20 @@
     }
 
     function embedUrl(item) {
-      const common = {
+      const params = new URLSearchParams({
         autoplay: "1", mute: "1", loop: "1",
         wmode: "opaque", autohide: "1", enablejsapi: "1",
         start: "0", iv_load_policy: "3", rel: "0", playsinline: "1"
-      };
-      const params = new URLSearchParams(common);
+      });
       if (item.kind === "video") {
-        // Loop a single video by setting playlist to itself
-        params.set("playlist", item.id);
+        params.set("playlist", item.id); // loop same video
         return `https://www.youtube.com/embed/${item.id}?${params.toString()}`;
-      } else {
-        // Playlist embed
+      } else if (item.kind === "playlist") {
         params.set("listType", "playlist");
         params.set("list", item.id);
         return `https://www.youtube.com/embed?${params.toString()}`;
       }
+      return "about:blank";
     }
 
     async function fetchItems(url) {
@@ -151,7 +164,6 @@
       if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
       const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
-      // Skip header row if first value isn't a YT link/id
       if (values.length && !parseYouTube(values[0])) values.shift();
       let items = values.map(parseYouTube).filter(Boolean);
       if (!document.getElementById("allowDuplicates").checked) {
@@ -161,7 +173,7 @@
       return items.slice(0, MAX_ITEMS);
     }
 
-    // YouTube Iframe API
+    // ——— YouTube Iframe API for progress resume
     let ytApiReady = false;
     function ensureYouTubeAPI() {
       if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
@@ -171,10 +183,8 @@
       document.head.appendChild(tag);
       window.onYouTubeIframeAPIReady = () => { ytApiReady = true; initPlayers(); };
     }
-
     const playerIntervals = new Map();
     function clearPlayerIntervals() { for (const i of playerIntervals.values()) clearInterval(i); playerIntervals.clear(); }
-
     function initPlayers() {
       if (!ytApiReady) return;
       const iframes = Array.from(document.querySelectorAll("#tbody iframe[data-progress-key]"));
@@ -207,17 +217,13 @@
       cell.className = "cell";
       cell.dataset.cellIndex = String(idx);
       const ifr = document.createElement("iframe");
-      const iframeId = `playeryt_${item.kind}_${item.id}_${idx+1}`;
+      const iframeId = `playeryt_${item.kind}_${(item.id||"")}_${idx+1}`;
       ifr.id = iframeId; ifr.src = embedUrl(item);
       ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope; fullscreen";
-      // Explicitly opt-in to fullscreen across browsers
-      ifr.setAttribute('allowfullscreen', '');
-      ifr.setAttribute('webkitallowfullscreen', '');
-      ifr.setAttribute('mozallowfullscreen', '');
-      ifr.dataset.progressKey = `${item.kind}:${item.id}`;
+      ifr.setAttribute('allowfullscreen',''); ifr.setAttribute('webkitallowfullscreen',''); ifr.setAttribute('mozallowfullscreen','');
+      ifr.dataset.progressKey = `${item.kind}:${item.id||idx}`;
       cell.appendChild(ifr);
       td.appendChild(cell);
-      // Attach click handler for swap mode
       cell.addEventListener('click', onCellClick);
       return td;
     }
@@ -229,8 +235,7 @@
       let row;
       items.forEach((item, i) => {
         if (i % cols === 0) { row = document.createElement("tr"); tbody.appendChild(row); }
-        const td = makeCell(item, i);
-        row.appendChild(td);
+        row.appendChild(makeCell(item, i));
       });
       ensureYouTubeAPI();
       requestAnimationFrame(resizeForFullscreen);
@@ -264,6 +269,12 @@
     }
 
     async function init() {
+      // hydrate key UI
+      const k = localStorage.getItem(KEY_STORE) || "";
+      const keyInput = document.getElementById("ytApiKey");
+      keyInput.value = k ? "••••••••••••" : ""; // hide actual key; shows dots if saved
+      document.getElementById("keyStatus").textContent = k ? "API key saved locally." : "No API key saved yet.";
+
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       error.style.display = "none";
@@ -302,75 +313,158 @@
     document.addEventListener("webkitfullscreenchange", resizeForFullscreen);
     window.addEventListener("resize", resizeForFullscreen);
 
-    // ——— Swap Mode (click two cells to swap) ———
+    // ——— Swap Mode (click two cells to swap)
     let swapMode = false;
     let firstCell = null;
-
     const swapBtn = document.getElementById('swapModeBtn');
     swapBtn.addEventListener('click', () => {
       swapMode = !swapMode;
       swapBtn.classList.toggle('toggle-on', swapMode);
       swapBtn.textContent = swapMode ? 'Swap Mode: ON' : 'Swap Mode';
       document.body.classList.toggle('swap-mode', swapMode);
-      clearSwapHighlights();
-      firstCell = null;
+      clearSwapHighlights(); firstCell = null;
     });
-
-    // Allow ESC to exit swap mode quickly
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && swapMode) {
-        swapMode = false;
-        document.body.classList.remove('swap-mode');
-        swapBtn.classList.remove('toggle-on');
-        swapBtn.textContent = 'Swap Mode';
-        clearSwapHighlights();
-        firstCell = null;
+        swapMode = false; document.body.classList.remove('swap-mode');
+        swapBtn.classList.remove('toggle-on'); swapBtn.textContent = 'Swap Mode';
+        clearSwapHighlights(); firstCell = null;
       }
     });
-
     function clearSwapHighlights() {
       document.querySelectorAll('.cell').forEach(c => c.classList.remove('swap-highlight','swap-pending'));
     }
-
     function onCellClick(e) {
-      if (!swapMode) return; // only active in swap mode
+      if (!swapMode) return;
       const cell = e.currentTarget;
-      if (!firstCell) {
-        firstCell = cell;
-        clearSwapHighlights();
-        cell.classList.add('swap-pending');
-        return;
-      }
-      if (cell === firstCell) {
-        // deselect if same cell clicked
-        firstCell.classList.remove('swap-pending');
-        firstCell = null;
-        return;
-      }
-      // perform swap of iframe nodes (preserves players and progress)
+      if (!firstCell) { firstCell = cell; clearSwapHighlights(); cell.classList.add('swap-pending'); return; }
+      if (cell === firstCell) { firstCell.classList.remove('swap-pending'); firstCell = null; return; }
       swapCellIframes(firstCell, cell);
-      // visual feedback
-      firstCell.classList.remove('swap-pending');
-      cell.classList.add('swap-highlight');
+      firstCell.classList.remove('swap-pending'); cell.classList.add('swap-highlight');
       setTimeout(() => { cell.classList.remove('swap-highlight'); }, 400);
-      firstCell = null;
-      // re-run sizing in case layout changed
-      requestAnimationFrame(resizeForFullscreen);
+      firstCell = null; requestAnimationFrame(resizeForFullscreen);
     }
-
     function swapCellIframes(cellA, cellB) {
       const ifrA = cellA.querySelector('iframe');
       const ifrB = cellB.querySelector('iframe');
       if (!ifrA || !ifrB) return;
-      const phA = document.createElement('div');
-      const phB = document.createElement('div');
-      // swap via placeholders to avoid re-creating nodes
-      cellA.replaceChild(phA, ifrA);
-      cellB.replaceChild(phB, ifrB);
-      cellA.replaceChild(ifrB, phA);
-      cellB.replaceChild(ifrA, phB);
+      const phA = document.createElement('div'), phB = document.createElement('div');
+      cellA.replaceChild(phA, ifrA); cellB.replaceChild(phB, ifrB);
+      cellA.replaceChild(ifrB, phA); cellB.replaceChild(ifrA, phB);
     }
 
+    // ——— API key handling
+    document.getElementById("saveKeyBtn").addEventListener("click", () => {
+      const input = document.getElementById("ytApiKey");
+      const v = input.value.trim();
+      if (!v) { localStorage.removeItem(KEY_STORE); document.getElementById("keyStatus").textContent = "Cleared API key."; return; }
+      localStorage.setItem(KEY_STORE, v);
+      input.value = "••••••••••••";
+      document.getElementById("keyStatus").textContent = "API key saved locally.";
+    });
+
+    function getApiKey() {
+      const v = localStorage.getItem(KEY_STORE) || "AIzaSyCqWACV98qEukeDyNF6wk7HID_m2XXu8Sc";
+      return v;
+    }
+
+    // ——— YouTube Search (Data API v3, embeddable only)
+    async function searchYouTubeEmbeddable(query, needed, randomize=false) {
+      const key = getApiKey();
+      if (!key) throw new Error("Please provide a YouTube Data API key to use search.");
+      const allowDup = document.getElementById("allowDuplicates").checked;
+
+      const results = [];
+      let pageToken = "";
+      while (results.length < needed) {
+        const batch = Math.min(50, needed - results.length);
+        const url = new URL("https://www.googleapis.com/youtube/v3/search");
+        url.search = new URLSearchParams({
+          key,
+          part: "snippet",
+          q: query,
+          maxResults: String(batch),
+          type: "video",
+          videoEmbeddable: "true",
+          regionCode: REGION_CODE,
+          safeSearch: "none",
+          order: "relevance",
+          pageToken
+        }).toString();
+
+        const r = await fetch(url.toString());
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(`YouTube API error: HTTP ${r.status}\n${text}`);
+        }
+        const data = await r.json();
+        const vids = (data.items || []).map(it => it.id?.videoId).filter(Boolean);
+
+        if (!allowDup) {
+          const existing = new Set(results);
+          vids.forEach(v => { if (!existing.has(v)) results.push(v); });
+        } else {
+          results.push(...vids);
+        }
+
+        pageToken = data.nextPageToken || "";
+        if (!pageToken && results.length < needed) break; // no more results
+      }
+
+      // If randomize, shuffle/pick; else take first N
+      let picked = results.slice(0);
+      if (randomize) {
+        for (let i=picked.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [picked[i],picked[j]]=[picked[j],picked[i]]; }
+      }
+      if (picked.length < needed && allowDup && picked.length > 0) {
+        // pad with repeats if allowed
+        while (picked.length < needed) picked.push(picked[picked.length % results.length]);
+      }
+      return picked.slice(0, needed).map(id => ({ kind:"video", id }));
+    }
+
+    // ——— Build n×n from search
+    async function doSearchFill(randomize=false) {
+      const q = (document.getElementById("searchInput").value || "").trim();
+      const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
+      const total = cols * cols;
+      const status = document.getElementById("status");
+      const error = document.getElementById("error");
+      error.style.display = "none";
+
+      if (!q) { error.textContent = "Please enter a search query."; error.style.display = "block"; return; }
+
+      status.textContent = `Searching YouTube for “${q}”… (need ${total} embeddable video${total===1?'':'s'})`;
+      try {
+        const items = await searchYouTubeEmbeddable(q, total, randomize);
+        if (!items.length) {
+          error.textContent = "No embeddable videos found for that query.";
+          error.style.display = "block"; status.textContent = ""; return;
+        }
+        if (items.length < total) {
+          status.textContent = `Found only ${items.length}/${total} embeddable videos for “${q}”.`;
+        } else {
+          status.textContent = `Loaded ${items.length} videos for “${q}”.`;
+        }
+        buildTable(items, cols);
+      } catch (e) {
+        error.textContent = e.message || String(e);
+        error.style.display = "block";
+        status.textContent = "";
+        console.error(e);
+      }
+    }
+
+    document.getElementById("searchFillBtn").addEventListener("click", () => { doSearchFill(false); });
+    document.getElementById("randomFillBtn").addEventListener("click", () => { doSearchFill(true); });
+
+    // Programmatic helper: window.randomButton("lofi hip hop")
+    window.randomButton = function(query) {
+      document.getElementById("searchInput").value = query || "";
+      doSearchFill(true);
+    };
+
+    // ——— Boot
     init();
   </script>
 </body>
