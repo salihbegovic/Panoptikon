@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panoptikon 2.5 — Videos & Playlists</title>
+  <title>Panoptikon 2.6 — Videos & Playlists (Hurensohn Edition)</title>
   <style>
     body { margin:0; font-family: system-ui, sans-serif; background:#0b0c10; color:#e8ecf1; }
     .wrap { max-width: 1800px; margin: 20px auto; padding: 12px; }
@@ -34,12 +34,10 @@
     #gridWrapper:-webkit-full-screen iframe { width:100%; height:100%; }
     .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
     .toggle-on { background:#0b3a2b; border-color:#134e4a; }
-    /* Swap-mode UX: make clicks go to parent cells, not the YouTube iframe */
     .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
     .swap-mode .cell { cursor: crosshair; }
     .swap-mode .cell.swap-pending { outline:2px dashed #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
 
-    /* empty-slot styling when forcing a fixed grid */
     .cell.empty {
       min-width: 560px; min-height: 315px;
       display:flex; align-items:center; justify-content:center;
@@ -52,7 +50,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>📺 Panoptikon 2.5 <span class="badge">(Hurensohn Edition)</span></h1>
+    <h1>📺 Panoptikon 2.6 <span class="badge">(Auto-grid)</span></h1>
     <img src="QRCode.png" alt="QR Code" width="200" height="200"><br>
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
@@ -70,7 +68,6 @@
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
     </div>
 
-    <!-- YouTube Search (API-based) -->
     <div class="controls">
       <input id="searchInput" type="text" placeholder="Search YouTube (e.g. ambient music)" />
       <button id="searchFillBtn" title="Fill grid with top results for this query">Search Fill</button>
@@ -78,7 +75,6 @@
       <span class="hint">If "Force grid size" is on, search fetches exactly Rows×Columns.</span>
     </div>
 
-    <!-- API key row (stored locally) -->
     <div class="controls">
       <input id="ytApiKey" type="password" placeholder="YouTube Data API key (stored locally)" />
       <button id="saveKeyBtn">Save Key</button>
@@ -104,8 +100,8 @@
     const STORAGE_KEY = "panoptikon_source_index";
     const POS_PREFIX = "panoptikon_time_";
     const KEY_STORE = "panoptikon_yt_api_key";
-    const REGION_CODE = "AT"; // you can change this if needed
-    const MAX_ITEMS = 200; // videos or playlists
+    const REGION_CODE = "AT";
+    const MAX_ITEMS = 200;
 
     function saveTime(key, seconds) {
       try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
@@ -178,9 +174,16 @@
       const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
       if (values.length && !parseYouTube(values[0])) values.shift();
       let items = values.map(parseYouTube).filter(Boolean);
+
+      // de-dup (kind:id) if not allowing duplicates
       if (!document.getElementById("allowDuplicates").checked) {
         const seen = new Set();
-        items = items.filter(it => { const key = `${it.kind}:${it.id}`; if (seen.has(key)) return false; seen.add(key); return true; });
+        items = items.filter(it => {
+          const key = `${it.kind}:${it.id}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
       return items.slice(0, MAX_ITEMS);
     }
@@ -281,7 +284,6 @@
             rowEl.appendChild(makeCell(list[i], i));
             i++;
           } else {
-            // pad empties when forced, otherwise skip creating extra cells
             if (forced) rowEl.appendChild(makeEmptyCell(i));
             i++;
           }
@@ -318,31 +320,139 @@
       return SOURCES[sel.selectedIndex]?.url || SOURCES[0].url;
     }
 
+    // ——— NEW: YouTube helpers to count & expand playlists
+    function getApiKey() {
+      const v = localStorage.getItem(KEY_STORE) || "";
+      return v;
+    }
+
+    async function getPlaylistCount(playlistId) {
+      const key = getApiKey();
+      if (!key) return 1; // fallback: treat as single item if no API key
+      const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+      url.search = new URLSearchParams({
+        key, part: "id", playlistId, maxResults: "1"
+      }).toString();
+      const r = await fetch(url.toString());
+      if (!r.ok) return 1;
+      const data = await r.json();
+      const total = data?.pageInfo?.totalResults;
+      return Number.isFinite(total) ? total : 1;
+    }
+
+    async function expandPlaylistVideos(playlistId, limit = Infinity) {
+      const key = getApiKey();
+      if (!key) return [{ kind:"playlist", id: playlistId }]; // cannot expand without API key
+      const results = [];
+      let pageToken = "";
+      while (results.length < limit) {
+        const batch = Math.min(50, limit - results.length);
+        const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+        url.search = new URLSearchParams({
+          key,
+          part: "contentDetails",
+          playlistId,
+          maxResults: String(batch),
+          pageToken
+        }).toString();
+        const r = await fetch(url.toString());
+        if (!r.ok) break;
+        const data = await r.json();
+        const vids = (data.items || [])
+          .map(it => it.contentDetails?.videoId)
+          .filter(Boolean)
+          .map(id => ({ kind:"video", id }));
+        results.push(...vids);
+        pageToken = data.nextPageToken || "";
+        if (!pageToken) break;
+      }
+      return results.length ? results : [{ kind:"playlist", id: playlistId }];
+    }
+
+    async function expandAllItems(items, cap) {
+      const allowDup = document.getElementById("allowDuplicates").checked;
+      const out = [];
+      const seen = new Set();
+
+      for (const it of items) {
+        if (out.length >= cap) break;
+
+        if (it.kind === "video") {
+          const key = `video:${it.id}`;
+          if (!allowDup && seen.has(key)) continue;
+          seen.add(key);
+          out.push(it);
+        } else if (it.kind === "playlist") {
+          const remaining = cap - out.length;
+          const vids = await expandPlaylistVideos(it.id, remaining);
+          for (const v of vids) {
+            const key = `${v.kind}:${v.id}`;
+            if (!allowDup && seen.has(key)) continue;
+            seen.add(key);
+            out.push(v);
+            if (out.length >= cap) break;
+          }
+        }
+      }
+      return out;
+    }
+
+    function autoSetGridForCount(n) {
+      // square-ish grid, capped to 12x12 UI constraints
+      let cols = Math.ceil(Math.sqrt(Math.max(1, n)));
+      cols = Math.min(12, Math.max(1, cols));
+      let rows = Math.ceil(n / cols);
+      rows = Math.min(12, Math.max(1, rows));
+      // if still not enough (n > 144), we'll just fill up to 12*12
+      document.getElementById("cols").value = String(cols);
+      document.getElementById("rows").value = String(rows);
+    }
+
     async function init() {
-      // hydrate key UI
       const k = localStorage.getItem(KEY_STORE) || "";
       const keyInput = document.getElementById("ytApiKey");
-      keyInput.value = k ? "••••••••••••" : ""; // hide actual key; shows dots if saved
+      keyInput.value = k ? "••••••••••••" : "";
       document.getElementById("keyStatus").textContent = k ? "API key saved locally." : "No API key saved yet.";
 
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       error.style.display = "none";
       status.textContent = "Loading links…";
+
       try {
-        const items = await fetchItems(currentSourceUrl());
-        const counts = items.reduce((acc, it) => { acc[it.kind]++; return acc; }, {video:0, playlist:0});
-        const settings = getGridSettings();
-        const display = settings.forced ? items.slice(0, settings.slots) : items;
+        const rawItems = await fetchItems(currentSourceUrl());
+
+        // Count total videos represented by links (playlists expanded count when API key available)
+        let totalCount = 0;
+        for (const it of rawItems) {
+          totalCount += (it.kind === "video") ? 1 : await getPlaylistCount(it.id);
+          if (totalCount >= MAX_ITEMS) { totalCount = MAX_ITEMS; break; }
+        }
+
+        const settings0 = getGridSettings();
+
+        // If not forcing a size, auto-pick a grid that fits the total video count
+        if (!settings0.forced) {
+          autoSetGridForCount(totalCount);
+        }
+        const settings = getGridSettings(); // read possibly updated cols/rows/slots
+
+        // Expand playlists into actual video entries so the grid matches video count
+        const display = await expandAllItems(rawItems, settings.forced ? settings.slots : MAX_ITEMS);
+
+        // When forcing a fixed grid, trim or pad empties inside buildTable
         const missing = settings.forced ? Math.max(0, settings.slots - display.length) : 0;
+
         const summary = settings.forced
-          ? `Loaded ${display.length}/${settings.slots} slot(s) — ${counts.video} video(s), ${counts.playlist} playlist(s).`
-          : `Loaded ${items.length} item${items.length===1?"":"s"} — ${counts.video} video(s), ${counts.playlist} playlist(s).`;
+          ? `Loaded ${display.length}/${settings.slots} slot(s) from ${rawItems.length} link(s) — ${totalCount} video(s) detected.`
+          : `Detected ${totalCount} video(s) from ${rawItems.length} link(s); auto-set grid to ${settings.cols}×${settings.rows}.`;
+
         status.textContent = summary + (missing ? ` (showing ${missing} empty slot${missing===1?"":"s"})` : "");
+
         buildTable(display, settings);
       } catch (e) {
         status.textContent = "";
-        error.textContent = e.message; error.style.display = "block"; console.error(e);
+        error.textContent = e.message || String(e); error.style.display = "block"; console.error(e);
       }
     }
 
@@ -400,14 +510,12 @@
       firstCell = null; requestAnimationFrame(() => { ensureYouTubeAPI(); resizeForFullscreen(); });
     }
     function swapCellContents(cellA, cellB) {
-      // Swap the entire contents to support empty cells too
       const tempA = document.createElement('div');
       while (cellA.firstChild) tempA.appendChild(cellA.firstChild);
       const tempB = document.createElement('div');
       while (cellB.firstChild) tempB.appendChild(cellB.firstChild);
       while (tempB.firstChild) cellA.appendChild(tempB.firstChild);
       while (tempA.firstChild) cellB.appendChild(tempA.firstChild);
-      // adjust empty class
       const hasIframeA = !!cellA.querySelector('iframe');
       const hasIframeB = !!cellB.querySelector('iframe');
       cellA.classList.toggle('empty', !hasIframeA);
@@ -423,11 +531,6 @@
       input.value = "••••••••••••";
       document.getElementById("keyStatus").textContent = "API key saved locally.";
     });
-
-    function getApiKey() {
-      const v = localStorage.getItem(KEY_STORE) || "AIzaSyCqWACV98qEukeDyNF6wk7HID_m2XXu8Sc";
-      return v;
-    }
 
     // ——— YouTube Search (Data API v3, embeddable only)
     async function searchYouTubeEmbeddable(query, needed, randomize=false) {
@@ -469,26 +572,23 @@
         }
 
         pageToken = data.nextPageToken || "";
-        if (!pageToken && results.length < needed) break; // no more results
+        if (!pageToken && results.length < needed) break;
       }
 
-      // If randomize, shuffle/pick; else take first N
       let picked = results.slice(0);
       if (randomize) {
         for (let i=picked.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [picked[i],picked[j]]=[picked[j],picked[i]]; }
       }
       if (picked.length < needed && allowDup && picked.length > 0) {
-        // pad with repeats if allowed
         while (picked.length < needed) picked.push(picked[picked.length % results.length]);
       }
       return picked.slice(0, needed).map(id => ({ kind:"video", id }));
     }
 
-    // ——— Build grid from search
     async function doSearchFill(randomize=false) {
       const q = (document.getElementById("searchInput").value || "").trim();
       const settings = getGridSettings();
-      const total = settings.forced ? settings.slots : settings.cols * settings.cols;
+      const total = settings.forced ? settings.slots : settings.cols * settings.rows;
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       error.style.display = "none";
@@ -524,7 +624,7 @@
       doSearchFill(true);
     };
 
-    // ——— Boot
+    // Boot
     init();
   </script>
 </body>
