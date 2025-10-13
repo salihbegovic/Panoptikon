@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panoptikon 2.6 — Videos & Playlists (Hurensohn Edition)</title>
+  <title>Panoptikon 2.7 — Videos & Playlists</title>
   <style>
     body { margin:0; font-family: system-ui, sans-serif; background:#0b0c10; color:#e8ecf1; }
     .wrap { max-width: 1800px; margin: 20px auto; padding: 12px; }
@@ -34,10 +34,12 @@
     #gridWrapper:-webkit-full-screen iframe { width:100%; height:100%; }
     .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
     .toggle-on { background:#0b3a2b; border-color:#134e4a; }
+    /* Swap-mode UX */
     .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
     .swap-mode .cell { cursor: crosshair; }
     .swap-mode .cell.swap-pending { outline:2px dashed #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
 
+    /* empty-slot styling when forcing a fixed grid */
     .cell.empty {
       min-width: 560px; min-height: 315px;
       display:flex; align-items:center; justify-content:center;
@@ -50,7 +52,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>📺 Panoptikon 2.6 <span class="badge">(Hurensohn Edition)</span></h1>
+    <h1>📺 Panoptikon 2.5 <span class="badge">(Hurensohn Edition)</span></h1>
     <img src="QRCode.png" alt="QR Code" width="200" height="200"><br>
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
@@ -66,8 +68,11 @@
       <button id="fullscreenBtn">Fullscreen</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
+      <!-- Playlist expansion toggle -->
+      <button id="expandPlaylistsBtn" title="Toggle whether playlists load as one item or expand into all videos">Playlists: ONE item</button>
     </div>
 
+    <!-- YouTube Search (API-based) -->
     <div class="controls">
       <input id="searchInput" type="text" placeholder="Search YouTube (e.g. ambient music)" />
       <button id="searchFillBtn" title="Fill grid with top results for this query">Search Fill</button>
@@ -75,6 +80,7 @@
       <span class="hint">If "Force grid size" is on, search fetches exactly Rows×Columns.</span>
     </div>
 
+    <!-- API key row (stored locally) -->
     <div class="controls">
       <input id="ytApiKey" type="password" placeholder="YouTube Data API key (stored locally)" />
       <button id="saveKeyBtn">Save Key</button>
@@ -82,6 +88,7 @@
     </div>
 
     <div id="status" class="hint"></div>
+    <div class="hint" id="loadedCount" style="margin-top:4px; opacity:.9;"></div>
     <div id="error" class="error" style="display:none"></div>
 
     <div id="gridWrapper">
@@ -103,6 +110,9 @@
     const REGION_CODE = "AT";
     const MAX_ITEMS = 200;
 
+    // Persist playlist expansion preference
+    const EXPAND_STORE = "panoptikon_expand_playlists"; // "1" | "0"
+
     function saveTime(key, seconds) {
       try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
     }
@@ -117,7 +127,7 @@
       init();
     }
 
-    // ——— Parse YouTube values from sheets
+    // Parse YouTube values from sheets
     function parseYouTube(x) {
       if (!x) return null;
       x = (""+x).trim();
@@ -133,7 +143,6 @@
         if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) return { kind:"video", id:vid };
         return null;
       }
-
       if (!/youtube\.com$/.test(host)) return null;
 
       if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list)) return { kind:"playlist", id:list };
@@ -174,21 +183,14 @@
       const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
       if (values.length && !parseYouTube(values[0])) values.shift();
       let items = values.map(parseYouTube).filter(Boolean);
-
-      // de-dup (kind:id) if not allowing duplicates
       if (!document.getElementById("allowDuplicates").checked) {
         const seen = new Set();
-        items = items.filter(it => {
-          const key = `${it.kind}:${it.id}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        items = items.filter(it => { const key = `${it.kind}:${it.id}`; if (seen.has(key)) return false; seen.add(key); return true; });
       }
       return items.slice(0, MAX_ITEMS);
     }
 
-    // ——— YouTube Iframe API for progress resume
+    // YouTube Iframe API (for progress resume)
     let ytApiReady = false;
     function ensureYouTubeAPI() {
       if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
@@ -226,7 +228,7 @@
       });
     }
 
-    // ——— Forced grid helpers
+    // Forced grid helpers
     function getGridSettings() {
       const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
       const forced = !!document.getElementById("forceGrid")?.checked;
@@ -269,11 +271,8 @@
       tbody.innerHTML = "";
 
       let list = items.slice();
-      if (forced) {
-        list = list.slice(0, slots); // ignore extras
-      }
+      if (forced) list = list.slice(0, slots);
 
-      // Compute number of rows
       const rowCount = forced ? rows : Math.max(1, Math.ceil(list.length / cols));
       let i = 0;
       for (let r = 0; r < rowCount; r++) {
@@ -320,139 +319,170 @@
       return SOURCES[sel.selectedIndex]?.url || SOURCES[0].url;
     }
 
-    // ——— NEW: YouTube helpers to count & expand playlists
-    function getApiKey() {
-      const v = localStorage.getItem(KEY_STORE) || "";
-      return v;
-    }
+    // Playlist expansion preference
+    function getExpandPref() { return localStorage.getItem(EXPAND_STORE) === "1"; }
+    function setExpandPref(v) { localStorage.setItem(EXPAND_STORE, v ? "1" : "0"); }
 
-    async function getPlaylistCount(playlistId) {
+    // Fetch all videos in a playlist (for expansion mode)
+    async function fetchPlaylistVideos(playlistId, maxTotal = MAX_ITEMS) {
       const key = getApiKey();
-      if (!key) return 1; // fallback: treat as single item if no API key
-      const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
-      url.search = new URLSearchParams({
-        key, part: "id", playlistId, maxResults: "1"
-      }).toString();
-      const r = await fetch(url.toString());
-      if (!r.ok) return 1;
-      const data = await r.json();
-      const total = data?.pageInfo?.totalResults;
-      return Number.isFinite(total) ? total : 1;
-    }
-
-    async function expandPlaylistVideos(playlistId, limit = Infinity) {
-      const key = getApiKey();
-      if (!key) return [{ kind:"playlist", id: playlistId }]; // cannot expand without API key
-      const results = [];
+      if (!key) throw new Error("Expanding playlists needs a YouTube Data API key. Save one above and try again.");
+      const out = [];
       let pageToken = "";
-      while (results.length < limit) {
-        const batch = Math.min(50, limit - results.length);
+      while (out.length < maxTotal) {
         const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
         url.search = new URLSearchParams({
           key,
           part: "contentDetails",
           playlistId,
-          maxResults: String(batch),
+          maxResults: "50",
           pageToken
         }).toString();
         const r = await fetch(url.toString());
-        if (!r.ok) break;
+        if (!r.ok) {
+          const txt = await r.text();
+          throw new Error(`YouTube API error for playlist ${playlistId}: HTTP ${r.status}\n${txt}`);
+        }
         const data = await r.json();
-        const vids = (data.items || [])
-          .map(it => it.contentDetails?.videoId)
-          .filter(Boolean)
-          .map(id => ({ kind:"video", id }));
-        results.push(...vids);
+        const vids = (data.items || []).map(it => it.contentDetails?.videoId).filter(Boolean);
+        out.push(...vids);
         pageToken = data.nextPageToken || "";
         if (!pageToken) break;
       }
-      return results.length ? results : [{ kind:"playlist", id: playlistId }];
+      return out.map(id => ({ kind: "video", id }));
     }
 
-    async function expandAllItems(items, cap) {
+    async function expandPlaylistsIfEnabled(items, expand) {
+      if (!expand) return items;
       const allowDup = document.getElementById("allowDuplicates").checked;
-      const out = [];
+      const status = document.getElementById("status");
+      const error = document.getElementById("error");
+
       const seen = new Set();
+      const push = (arr, it) => {
+        if (allowDup) { arr.push(it); return true; }
+        const k = `video:${it.id}`;
+        if (seen.has(k)) return false;
+        seen.add(k); arr.push(it); return true;
+      };
 
+      if (!allowDup) {
+        items.forEach(it => { if (it.kind === "video") seen.add(`video:${it.id}`); });
+      }
+
+      const out = [];
+      let playlistsExpanded = 0;
       for (const it of items) {
-        if (out.length >= cap) break;
-
-        if (it.kind === "video") {
-          const key = `video:${it.id}`;
-          if (!allowDup && seen.has(key)) continue;
-          seen.add(key);
-          out.push(it);
-        } else if (it.kind === "playlist") {
-          const remaining = cap - out.length;
-          const vids = await expandPlaylistVideos(it.id, remaining);
-          for (const v of vids) {
-            const key = `${v.kind}:${v.id}`;
-            if (!allowDup && seen.has(key)) continue;
-            seen.add(key);
-            out.push(v);
-            if (out.length >= cap) break;
+        if (out.length >= MAX_ITEMS) break;
+        if (it.kind === "playlist") {
+          try {
+            status.textContent = `Expanding playlist ${playlistsExpanded+1}…`;
+            const vids = await fetchPlaylistVideos(it.id, MAX_ITEMS);
+            for (const v of vids) {
+              if (out.length >= MAX_ITEMS) break;
+              push(out, v);
+            }
+            playlistsExpanded++;
+          } catch (e) {
+            console.warn(e);
+            error.style.display = "block";
+            error.textContent = (error.textContent ? error.textContent + "\n" : "") + (e.message || String(e));
+            out.push(it);
           }
+        } else {
+          push(out, it);
         }
       }
-      return out;
+      status.textContent = `Expanded ${playlistsExpanded} playlist${playlistsExpanded===1?"":"s"} into videos.`;
+      return out.slice(0, MAX_ITEMS);
     }
 
-    function autoSetGridForCount(n) {
-      // square-ish grid, capped to 12x12 UI constraints
-      let cols = Math.ceil(Math.sqrt(Math.max(1, n)));
-      cols = Math.min(12, Math.max(1, cols));
-      let rows = Math.ceil(n / cols);
-      rows = Math.min(12, Math.max(1, rows));
-      // if still not enough (n > 144), we'll just fill up to 12*12
-      document.getElementById("cols").value = String(cols);
-      document.getElementById("rows").value = String(rows);
+    // Compute an optimal near-square grid (used only when Force grid is OFF)
+    function computeOptimalGrid(n) {
+      n = Math.max(1, Math.min(144, n)); // cap to 12×12 UI limits
+      let best = { cols: 1, rows: n, waste: 0, aspect: Infinity };
+      for (let cols = 1; cols <= Math.min(12, n); cols++) {
+        const rows = Math.ceil(n / cols);
+        if (rows > 12) continue;
+        const slots = cols * rows;
+        const waste = slots - n;
+        const aspect = Math.abs(cols - rows);
+        const isBetter =
+          waste < best.waste ||
+          (waste === best.waste && aspect < best.aspect) ||
+          (waste === best.waste && aspect === best.aspect && rows < best.rows);
+        if (isBetter) best = { cols, rows, waste, aspect };
+      }
+      return { cols: best.cols, rows: best.rows };
+    }
+    function applyGridToInputs(cols, rows) {
+      const colsEl = document.getElementById("cols");
+      const rowsEl = document.getElementById("rows");
+      colsEl.value = String(cols);
+      rowsEl.value = String(rows);
     }
 
     async function init() {
+      // hydrate key UI
       const k = localStorage.getItem(KEY_STORE) || "";
       const keyInput = document.getElementById("ytApiKey");
       keyInput.value = k ? "••••••••••••" : "";
       document.getElementById("keyStatus").textContent = k ? "API key saved locally." : "No API key saved yet.";
 
+      // hydrate expand toggle
+      expandPlaylists = getExpandPref();
+      renderExpandBtn();
+
       const status = document.getElementById("status");
       const error = document.getElementById("error");
+      const loadedCountEl = document.getElementById("loadedCount");
       error.style.display = "none";
       status.textContent = "Loading links…";
+      loadedCountEl.textContent = "";
 
       try {
-        const rawItems = await fetchItems(currentSourceUrl());
+        let items = await fetchItems(currentSourceUrl());
 
-        // Count total videos represented by links (playlists expanded count when API key available)
-        let totalCount = 0;
-        for (const it of rawItems) {
-          totalCount += (it.kind === "video") ? 1 : await getPlaylistCount(it.id);
-          if (totalCount >= MAX_ITEMS) { totalCount = MAX_ITEMS; break; }
+        // counts before expansion
+        const preCounts = items.reduce((acc, it) => { acc[it.kind] = (acc[it.kind]||0)+1; return acc; }, {video:0, playlist:0});
+
+        // Expand playlists if toggle is ON
+        if (expandPlaylists) items = await expandPlaylistsIfEnabled(items, true);
+
+        // Auto grid when NOT forced
+        const forceGridEl = document.getElementById("forceGrid");
+        if (!forceGridEl.checked) {
+          const n = items.length;
+          const { cols, rows } = computeOptimalGrid(n);
+          applyGridToInputs(cols, rows);
         }
 
-        const settings0 = getGridSettings();
-
-        // If not forcing a size, auto-pick a grid that fits the total video count
-        if (!settings0.forced) {
-          autoSetGridForCount(totalCount);
-        }
-        const settings = getGridSettings(); // read possibly updated cols/rows/slots
-
-        // Expand playlists into actual video entries so the grid matches video count
-        const display = await expandAllItems(rawItems, settings.forced ? settings.slots : MAX_ITEMS);
-
-        // When forcing a fixed grid, trim or pad empties inside buildTable
+        const settings = getGridSettings();
+        const display = settings.forced ? items.slice(0, settings.slots) : items;
         const missing = settings.forced ? Math.max(0, settings.slots - display.length) : 0;
 
+        // counts after expansion (what will render)
+        const postCounts = display.reduce((acc, it) => { acc[it.kind] = (acc[it.kind]||0)+1; return acc; }, {video:0, playlist:0});
+
+        // Live counter of embeds
+        loadedCountEl.textContent = `Loaded embeds: ${display.length} (${expandPlaylists ? "videos expanded from playlists" : "videos & playlists as-is"})`;
+
         const summary = settings.forced
-          ? `Loaded ${display.length}/${settings.slots} slot(s) from ${rawItems.length} link(s) — ${totalCount} video(s) detected.`
-          : `Detected ${totalCount} video(s) from ${rawItems.length} link(s); auto-set grid to ${settings.cols}×${settings.rows}.`;
+          ? `Loaded ${display.length}/${settings.slots} slot(s) — ${expandPlaylists
+              ? `${postCounts.video} video(s) (expanded from ${preCounts.playlist} playlist${preCounts.playlist===1?"":"s"})`
+              : `${preCounts.video} video(s), ${preCounts.playlist} playlist(s)`}.`
+          : `Loaded ${display.length} item${display.length===1?"":"s"} — ${expandPlaylists
+              ? `${postCounts.video} video(s) (expanded from ${preCounts.playlist} playlist${preCounts.playlist===1?"":"s"})`
+              : `${preCounts.video} video(s), ${preCounts.playlist} playlist(s)`}. (Auto grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
 
         status.textContent = summary + (missing ? ` (showing ${missing} empty slot${missing===1?"":"s"})` : "");
-
         buildTable(display, settings);
       } catch (e) {
         status.textContent = "";
-        error.textContent = e.message || String(e); error.style.display = "block"; console.error(e);
+        document.getElementById("loadedCount").textContent = "";
+        error.textContent = e.message || String(e);
+        error.style.display = "block";
+        console.error(e);
       }
     }
 
@@ -478,7 +508,7 @@
     document.addEventListener("webkitfullscreenchange", resizeForFullscreen);
     window.addEventListener("resize", resizeForFullscreen);
 
-    // ——— Swap Mode (click two cells to swap)
+    // Swap Mode (click two cells to swap)
     let swapMode = false;
     let firstCell = null;
     const swapBtn = document.getElementById('swapModeBtn');
@@ -522,7 +552,7 @@
       cellB.classList.toggle('empty', !hasIframeB);
     }
 
-    // ——— API key handling
+    // API key handling
     document.getElementById("saveKeyBtn").addEventListener("click", () => {
       const input = document.getElementById("ytApiKey");
       const v = input.value.trim();
@@ -532,7 +562,12 @@
       document.getElementById("keyStatus").textContent = "API key saved locally.";
     });
 
-    // ——— YouTube Search (Data API v3, embeddable only)
+    function getApiKey() {
+      const v = localStorage.getItem(KEY_STORE) || "AIzaSyCqWACV98qEukeDyNF6wk7HID_m2XXu8Sc";
+      return v;
+    }
+
+    // YouTube Search (Data API v3, embeddable only)
     async function searchYouTubeEmbeddable(query, needed, randomize=false) {
       const key = getApiKey();
       if (!key) throw new Error("Please provide a YouTube Data API key to use search.");
@@ -588,7 +623,7 @@
     async function doSearchFill(randomize=false) {
       const q = (document.getElementById("searchInput").value || "").trim();
       const settings = getGridSettings();
-      const total = settings.forced ? settings.slots : settings.cols * settings.rows;
+      const total = settings.forced ? settings.slots : settings.cols * settings.cols;
       const status = document.getElementById("status");
       const error = document.getElementById("error");
       error.style.display = "none";
@@ -618,15 +653,22 @@
     document.getElementById("searchFillBtn").addEventListener("click", () => { doSearchFill(false); });
     document.getElementById("randomFillBtn").addEventListener("click", () => { doSearchFill(true); });
 
-    // Programmatic helper: window.randomButton("lofi hip hop")
-    window.randomButton = function(query) {
-      document.getElementById("searchInput").value = query || "";
-      doSearchFill(true);
-    };
+    // Playlist toggle wiring
+    let expandPlaylists = getExpandPref();
+    const expandBtn = document.getElementById("expandPlaylistsBtn");
+    function renderExpandBtn() {
+      expandBtn.classList.toggle("toggle-on", expandPlaylists);
+      expandBtn.textContent = expandPlaylists ? "Playlists: ALL videos" : "Playlists: ONE item";
+    }
+    expandBtn.addEventListener("click", () => {
+      expandPlaylists = !expandPlaylists;
+      setExpandPref(expandPlaylists);
+      renderExpandBtn();
+      init();
+    });
 
     // Boot
     init();
   </script>
 </body>
 </html>
-
