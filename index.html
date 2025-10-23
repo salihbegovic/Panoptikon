@@ -116,13 +116,13 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>📺 Panoptikon 3.0 <span class="badge">Auto-Grid Previews</span></h1>
+    <h1>📺 Panoptikon 3.0 <span class="badge">Ich ficke deine Mutter</span></h1>
     <img src="QRCode.png" alt="QR Code" width="200" height="200"><br>
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
     <!-- Sources preview gallery -->
     <div class="row" style="margin-top:10px;">
-      <div class="hint">Previews now use <strong>Auto Grid</strong> per sheet. Click a card to load that source into the main grid (which still follows your controls below).</div>
+      <div class="hint">Everything old - once was young. Everything young - someday dies.</div>
       <div class="spacer"></div>
       <span class="hint" id="previewStatus"></span>
     </div>
@@ -175,8 +175,7 @@
       { label: "Sheet 4", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv" },
       { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" }
     ];
-    const LABEL_ALL = "All Sheets";
-    const STORAGE_SELECTED = "panoptikon_selected_index"; // -1 means ALL
+    const STORAGE_SELECTED = "panoptikon_selected_index"; // active source index (0..SOURCES.length-1)
     const POS_PREFIX = "panoptikon_time_";
     const KEY_STORE = "panoptikon_yt_api_key";
     const REGION_CODE = "AT";
@@ -567,10 +566,14 @@
      ***********************/
     const cache = new Map(); // label -> {items, counts, thumbs}
     function getSelectedIndex() {
-      const v = +localStorage.getItem(STORAGE_SELECTED);
-      return Number.isInteger(v) ? v : -1; // default to ALL
+      let v = +localStorage.getItem(STORAGE_SELECTED);
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 0; // default to first sheet
+      return v;
     }
-    function setSelectedIndex(i) { localStorage.setItem(STORAGE_SELECTED, String(i)); }
+    function setSelectedIndex(i) {
+      const clamped = Math.max(0, Math.min(SOURCES.length - 1, i|0));
+      localStorage.setItem(STORAGE_SELECTED, String(clamped));
+    }
 
     function itemCounts(items) {
       return items.reduce((acc, it) => { acc[it.kind] = (acc[it.kind]||0)+1; return acc; }, {});
@@ -586,6 +589,25 @@
     }
     function ytThumbUrl(id) { return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; }
 
+    // NEW: cache + helper for playlist thumbnails (used in small previews)
+    const playlistThumbCache = new Map();
+    async function fetchPlaylistThumbUrl(playlistId) {
+      if (playlistThumbCache.has(playlistId)) return playlistThumbCache.get(playlistId);
+      const key = getApiKey();
+      if (!key) return null;
+      try {
+        const url = new URL("https://www.googleapis.com/youtube/v3/playlists");
+        url.search = new URLSearchParams({ key, part: "snippet", id: playlistId }).toString();
+        const r = await fetch(url.toString());
+        if (!r.ok) return null;
+        const data = await r.json();
+        const t = data.items?.[0]?.snippet?.thumbnails || {};
+        const thumb = t.medium?.url || t.standard?.url || t.high?.url || t.default?.url || null;
+        if (thumb) playlistThumbCache.set(playlistId, thumb);
+        return thumb;
+      } catch { return null; }
+    }
+
     async function loadAllSources() {
       const previewStatus = document.getElementById("previewStatus");
       previewStatus.textContent = "Loading sheets…";
@@ -598,14 +620,6 @@
         });
       });
       await Promise.all(tasks);
-
-      // Build ALL combined
-      const merged = SOURCES.flatMap(s => cache.get(s.label)?.items || []);
-      cache.set(LABEL_ALL, {
-        items: merged.slice(0, MAX_ITEMS),
-        counts: itemCounts(merged),
-        thumbs: takeVideoThumbs(merged)
-      });
 
       buildSourcesPreview();
       previewStatus.textContent = `Loaded ${SOURCES.length} sheet(s).`;
@@ -637,15 +651,13 @@
     function buildSourcesPreview() {
       const wrap = document.getElementById("sourcesPreview");
       wrap.innerHTML = "";
-      const allLabels = [LABEL_ALL, ...SOURCES.map(s => s.label)];
       const selectedIdx = getSelectedIndex();
 
-      allLabels.forEach((label, idx) => {
-        const data = cache.get(label);
+      SOURCES.forEach((src, idx) => {
+        const data = cache.get(src.label);
         const card = document.createElement("div");
         card.className = "source-card";
-        const effectiveIdx = idx - 1; // because 0 is "All"
-        if ((selectedIdx === -1 && label === LABEL_ALL) || effectiveIdx === selectedIdx) {
+        if (idx === selectedIdx) {
           card.classList.add("active-source");
         }
 
@@ -653,7 +665,7 @@
         head.className = "source-head";
         const title = document.createElement("div");
         title.className = "source-title";
-        title.textContent = label + " (Auto)";
+        title.textContent = src.label + " (Auto)";
         const counts = document.createElement("div");
         counts.className = "counts";
         const v = data?.counts?.video || 0;
@@ -668,8 +680,9 @@
         const scaleWrap = document.createElement("div");
         scaleWrap.className = "preview-scale";
 
-        const thumbs = data?.thumbs || [];
-        const totalItems = (data?.counts?.video || 0) + (data?.counts?.playlist || 0);
+        // Use the actual items order so playlists can show their own thumbs
+        const items = data?.items || [];
+        const totalItems = items.length;
         const shape = previewAutoShape(totalItems);
 
         const grid = document.createElement("div");
@@ -681,19 +694,33 @@
         const naturalH = shape.rows * TILE_H + (shape.rows - 1) * GAP;
         grid.style.gridTemplateColumns = `repeat(${shape.cols}, ${TILE_W}px)`;
 
-        // Fill tiles: show thumbnails for first videos, placeholders for others (playlists/overflow)
+        // Fill tiles: thumbnail for videos, fetched thumbnail for playlists, placeholder otherwise
         const totalSlots = shape.slots;
         for (let i = 0; i < totalSlots; i++) {
           const t = document.createElement("div");
           t.className = "preview-tile";
-          const id = thumbs[i];
-          if (id) {
+          const item = items[i];
+
+          if (item && item.kind === "video" && /^[a-zA-Z0-9_-]{11}$/.test(item.id)) {
             const img = document.createElement("img");
             img.loading = "lazy";
             img.decoding = "async";
-            img.src = ytThumbUrl(id);
+            img.src = ytThumbUrl(item.id);
             img.alt = "Video";
             t.appendChild(img);
+          } else if (item && item.kind === "playlist") {
+            t.textContent = "—";
+            fetchPlaylistThumbUrl(item.id).then((url) => {
+              if (!url) return;
+              if (!t.isConnected) return;
+              t.textContent = "";
+              const img = document.createElement("img");
+              img.loading = "lazy";
+              img.decoding = "async";
+              img.src = url;
+              img.alt = "Playlist";
+              t.appendChild(img);
+            }).catch(() => {});
           } else {
             t.textContent = "—";
           }
@@ -716,11 +743,10 @@
         card.appendChild(shell);
 
         card.addEventListener("click", () => {
-          const selIdx = label === LABEL_ALL ? -1 : SOURCES.findIndex(s => s.label === label);
-          setSelectedIndex(selIdx);
+          setSelectedIndex(idx);
           Array.from(document.querySelectorAll(".source-card")).forEach(c => c.classList.remove("active-source"));
           card.classList.add("active-source");
-          loadSelectedIntoGrid(selIdx);
+          loadSelectedIntoGrid(idx);
         });
 
         wrap.appendChild(card);
@@ -728,7 +754,6 @@
     }
 
     function getCurrentItemsForIndex(idx) {
-      if (idx === -1) return cache.get(LABEL_ALL)?.items || [];
       const label = SOURCES[idx]?.label;
       return cache.get(label)?.items || [];
     }
@@ -766,7 +791,7 @@
         const display = settings.forced ? items.slice(0, settings.slots) : items;
         const missing = settings.forced ? Math.max(0, settings.slots - display.length) : 0;
 
-        const label = idx === -1 ? LABEL_ALL : (SOURCES[idx]?.label || "Sheet");
+        const label = SOURCES[idx]?.label || "Sheet";
         document.getElementById("loadedCount").textContent =
           `Loaded embeds: ${display.length} from ${label}${expandPlaylists ? " (playlists expanded)" : ""}`;
 
@@ -884,10 +909,10 @@
         error.style.display = "block";
       }
 
-      // Load previously selected (default All Sheets)
+      // Load previously selected, default to first sheet
       const selected = getSelectedIndex();
-      if (selected === undefined || selected === null) setSelectedIndex(-1);
-      loadSelectedIntoGrid(getSelectedIndex());
+      setSelectedIndex(selected);
+      loadSelectedIntoGrid(selected);
     }
 
     init();
