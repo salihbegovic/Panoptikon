@@ -71,7 +71,8 @@
     .active-source { outline:2px solid #7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25) inset; }
 
     /* Grid/table for main embeds */
-    table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; }
+    table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; table-layout: fixed; } /* fixed widths */
+
     td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; vertical-align:top; }
 
     /* Responsive 16:9 for main embeds */
@@ -88,11 +89,11 @@
     #gridWrapper:fullscreen { width:100vw; height:100vh; margin:0; }
     #gridWrapper:fullscreen table { width:100%; height:100%; border-spacing:2px; }
     #gridWrapper:fullscreen td { padding:0; }
-    #gridWrapper:fullscreen .video-container { padding-top:56.25%; }
+    #gridWrapper:fullscreen .video-container { /* padding-top adjusted via JS */ }
     #gridWrapper:-webkit-full-screen { width:100vw; height:100vh; }
     #gridWrapper:-webkit-full-screen table { width:100%; height:100%; border-spacing:2px; }
     #gridWrapper:-webkit-full-screen td { padding:0; }
-    #gridWrapper:-webkit-full-screen .video-container { padding-top:56.25%; }
+    #gridWrapper:-webkit-full-screen .video-container { /* padding-top adjusted via JS */ }
 
     /* Swap-mode UX */
     .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
@@ -137,6 +138,8 @@
       <button id="fullscreenBtn">Fullscreen</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
+      <button id="saveLayoutBtn" title="Save current order">Save Layout</button>
+      <button id="clearLayoutBtn" title="Clear saved order">Clear Layout</button>
       <button id="expandPlaylistsBtn" title="Toggle whether playlists load as one item or expand into all videos">Playlists: ONE item</button>
     </div>
 
@@ -182,6 +185,30 @@
     const MAX_ITEMS = 200;
     const EXPAND_STORE = "panoptikon_expand_playlists"; // "1" | "0"
 
+    // NEW: layout persistence
+    const LAYOUT_STORE_PREFIX = "panoptikon_layout_";
+    function layoutKey() {
+      const label = SOURCES[getSelectedIndex()]?.label || "Sheet";
+      return `${LAYOUT_STORE_PREFIX}${label}:${expandPlaylists ? "expanded" : "one"}`;
+    }
+    function getItemKey(it) { return `${it.kind}:${it.id||""}`; }
+    function saveCurrentLayout() {
+      const order = Array.from(document.querySelectorAll("#tbody .cell iframe"))
+        .map(ifr => ifr?.dataset?.progressKey)
+        .filter(Boolean);
+      try { localStorage.setItem(layoutKey(), JSON.stringify(order)); } catch {}
+      document.getElementById("status").textContent = "Layout saved.";
+    }
+    function loadSavedLayout() {
+      try {
+        const raw = localStorage.getItem(layoutKey());
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    }
+    function clearSavedLayout() {
+      localStorage.removeItem(layoutKey());
+    }
+
     /***********************
      * Utilities
      ***********************/
@@ -196,6 +223,8 @@
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
       });
+      // also clear saved layout for current context
+      clearSavedLayout();
       init(); // rebuild grid & previews
     }
 
@@ -244,18 +273,6 @@
         return `https://www.youtube.com/embed?${params.toString()}`;
       }
       return "about:blank";
-    }
-
-    // Lightweight fetch of sheet items
-    async function fetchItems(url) {
-      const res = await fetch(url, { credentials: "omit", cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
-      const text = await res.text();
-      if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
-      if (values.length && !parseYouTube(values[0])) values.shift(); // drop header if present
-      return values.map(parseYouTube).filter(Boolean).slice(0, MAX_ITEMS);
     }
 
     // YouTube Iframe API for progress resume
@@ -370,8 +387,43 @@
       requestAnimationFrame(resizeForFullscreen);
     }
 
+    // UPDATED: fullscreen sizing so 21:9 is perfect
     function resizeForFullscreen() {
-      /* CSS handles responsive sizing */
+      const wrapper = document.getElementById("gridWrapper");
+      const isFS = document.fullscreenElement === wrapper ||
+                   document.webkitFullscreenElement === wrapper;
+
+      const containers = wrapper.querySelectorAll(".video-container");
+
+      // Reset to 16:9 when not fullscreen
+      if (!isFS) {
+        containers.forEach(c => { c.style.paddingTop = "56.25%"; });
+        return;
+      }
+
+      const { cols, rows } = getGridSettings();
+      // Match fullscreen CSS spacing
+      const spacing = 2;
+      const rect = wrapper.getBoundingClientRect();
+      const availW = rect.width  - spacing * (cols + 1);
+      const availH = rect.height - spacing * (rows + 1);
+
+      let cellW = availW / cols;
+      let cellH = availH / rows;
+
+      // Start width-driven 16:9
+      let hFromW = cellW * 9 / 16;
+
+      if (hFromW * rows > availH) {
+        // Height-constrained: derive width from height
+        cellH = availH / rows;
+        cellW = cellH * 16 / 9;
+      } else {
+        cellH = hFromW;
+      }
+
+      const pct = (cellH / cellW) * 100;
+      containers.forEach(c => { c.style.paddingTop = pct + "%"; });
     }
 
     /***********************
@@ -779,6 +831,25 @@
         // Expand playlists if toggle is ON
         if (expandPlaylists) items = await expandPlaylistsIfEnabled(items, true);
 
+        // Apply saved layout (if any) BEFORE auto/force sizing
+        const savedOrder = loadSavedLayout();
+        if (Array.isArray(savedOrder) && savedOrder.length) {
+          const byKey = new Map(items.map(it => [getItemKey(it), it]));
+          const picked = [];
+          const seen = new Set();
+          // First: items that exist in saved order
+          for (const k of savedOrder) {
+            const it = byKey.get(k);
+            if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
+          }
+          // Then: any remaining items not in the saved order
+          for (const it of items) {
+            const k = getItemKey(it);
+            if (!seen.has(k)) { picked.push(it); seen.add(k); }
+          }
+          items = picked;
+        }
+
         // Auto grid when NOT forced
         const forceGridEl = document.getElementById("forceGrid");
         if (!forceGridEl.checked) {
@@ -847,6 +918,8 @@
       firstCell.classList.remove('swap-pending'); cell.classList.add('swap-highlight');
       setTimeout(() => { cell.classList.remove('swap-highlight'); }, 400);
       firstCell = null; requestAnimationFrame(() => { ensureYouTubeAPI(); resizeForFullscreen(); });
+      // Auto-save new order after each completed swap
+      saveCurrentLayout();
     }
     function swapCellContents(cellA, cellB) {
       const tempA = document.createElement('div');
@@ -876,11 +949,21 @@
       }
     });
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
+
+    // NEW: layout buttons
+    document.getElementById("saveLayoutBtn").addEventListener("click", saveCurrentLayout);
+    document.getElementById("clearLayoutBtn").addEventListener("click", () => {
+      clearSavedLayout();
+      document.getElementById("status").textContent = "Saved layout cleared.";
+    });
+
     document.addEventListener("fullscreenchange", resizeForFullscreen);
     document.addEventListener("webkitfullscreenchange", resizeForFullscreen);
     window.addEventListener("resize", () => {
       // Rescale previews on resize
       buildSourcesPreview();
+      // Keep fullscreen tiles fitting on resize
+      resizeForFullscreen();
     });
 
     // API key handling
@@ -915,8 +998,19 @@
       loadSelectedIntoGrid(selected);
     }
 
+    // Lightweight fetch of sheet items
+    async function fetchItems(url) {
+      const res = await fetch(url, { credentials: "omit", cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
+      const text = await res.text();
+      if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
+      if (values.length && !parseYouTube(values[0])) values.shift(); // drop header if present
+      return values.map(parseYouTube).filter(Boolean).slice(0, MAX_ITEMS);
+    }
+
     init();
   </script>
 </body>
 </html>
-
