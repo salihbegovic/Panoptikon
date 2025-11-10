@@ -144,15 +144,15 @@
       <button id="aspectModeBtn" title="Toggle tile aspect behavior">Aspect: 16:9</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
-      <button id="saveLayoutBtn" title="Save current order">Save Layout</button>
-      <button id="clearLayoutBtn" title="Clear layout">Clear Layout</button>
-      <button id="expandPlaylistsBtn" title="Toggle whether playlists load as one item or expand into all videos">Playlists: ONE item</button>
+      <button id="saveLayoutBtn">Save Layout</button>
+      <button id="clearLayoutBtn">Clear Layout</button>
+      <button id="expandPlaylistsBtn">Playlists: ONE item</button>
     </div>
 
     <div class="controls">
       <input id="searchInput" type="text" placeholder="Search YouTube (e.g. ambient music)" />
-      <button id="searchFillBtn" title="Fill grid with top results for this query">Search Fill</button>
-      <button id="randomFillBtn" title="Fill grid with random results for this query">Random Fill</button>
+      <button id="searchFillBtn">Search Fill</button>
+      <button id="randomFillBtn">Random Fill</button>
       <span class="hint">If "Force grid size" is on, search fetches exactly Rows×Columns.</span>
     </div>
 
@@ -197,10 +197,13 @@
       const label = SOURCES[getSelectedIndex()]?.label || "Sheet";
       return `${LAYOUT_STORE_PREFIX}${label}:${expandPlaylists ? "expanded" : "one"}`;
     }
-    function getItemKey(it) { return `${it.kind}:${it.id||""}`; }
+    function getItemKey(it) {
+      // include startVideoId so layouts don't collide weirdly
+      return `${it.kind}:${it.id || ""}:${it.startVideoId || ""}`;
+    }
 
     /***********************
-     * YouTube parsing + embed
+     * YouTube parsing
      ***********************/
     function parseYouTube(x) {
       if (!x) return null;
@@ -215,18 +218,13 @@
       if (!/^https?:\/\//i.test(x)) x = "https://" + x;
 
       let u;
-      try {
-        u = new URL(x);
-      } catch {
-        return null;
-      }
+      try { u = new URL(x); } catch { return null; }
 
       const host = u.hostname.replace(/^www\./, "");
-      const v = u.searchParams.get("v");
-      const list = u.searchParams.get("list");
-      const startRadio = u.searchParams.get("start_radio");
+      const v = u.searchParams.get("v") || undefined;
+      const list = u.searchParams.get("list") || undefined;
 
-      // youtu.be
+      // youtu.be short
       if (host === "youtu.be") {
         const vid = u.pathname.split("/").filter(Boolean)[0];
         if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
@@ -235,43 +233,32 @@
         return null;
       }
 
-      // not YouTube
       if (!/youtube\.com$/.test(host)) return null;
 
-      // radio/mix: treat as plain video for previews
-      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v) &&
-          (startRadio === "1" || (list && list.startsWith("RD")))) {
-        return { kind: "video", id: v };
+      // If there's a list param → treat as playlist, including RD (radio/mix)
+      if (list && /^[a-zA-Z0-9_-]{3,}$/.test(list)) {
+        // Keep start video if present; useful for RD links and normal playlists with a start.
+        return {
+          kind: "playlist",
+          id: list,
+          startVideoId: (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) ? v : undefined
+        };
       }
 
-      // real playlists (non-RD)
-      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list) && !list.startsWith("RD") && startRadio !== "1") {
-        if (!v) {
-          return { kind: "playlist", id: list };
-        }
-        if (/^[a-zA-Z0-9_-]{11}$/.test(v)) {
-          return { kind: "video", id: v };
-        }
-      }
-
-      // standard watch?v=
+      // Standard watch?v=
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
         return { kind: "video", id: v };
       }
 
       // shorts
       let m = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
-      if (m) {
-        return { kind: "video", id: m[1].slice(0, 11) };
-      }
+      if (m) return { kind: "video", id: m[1].slice(0, 11) };
 
       // embed
       m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
-      if (m) {
-        return { kind: "video", id: m[1].slice(0, 11) };
-      }
+      if (m) return { kind: "video", id: m[1].slice(0, 11) };
 
-      // fallback: last path segment
+      // Fallback: last path segment
       const tail = u.pathname.split("/").filter(Boolean).pop();
       if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) {
         return { kind: "video", id: tail.slice(0, 11) };
@@ -280,20 +267,42 @@
       return null;
     }
 
+    /***********************
+     * Embed URL builder
+     ***********************/
     function embedUrl(item) {
-      const params = new URLSearchParams({
-        autoplay: "1", mute: "1", loop: "1",
-        wmode: "opaque", autohide: "1", enablejsapi: "1",
-        start: "0", iv_load_policy: "3", rel: "0", playsinline: "1"
-      });
+      const baseParams = {
+        autoplay: "1",
+        mute: "1",
+        wmode: "opaque",
+        autohide: "1",
+        enablejsapi: "1",
+        start: "0",
+        iv_load_policy: "3",
+        rel: "0",
+        playsinline: "1"
+      };
+
       if (item.kind === "video") {
+        const params = new URLSearchParams(baseParams);
+        // loop a single video only in this case
+        params.set("loop", "1");
         params.set("playlist", item.id);
         return `https://www.youtube.com/embed/${item.id}?${params.toString()}`;
-      } else if (item.kind === "playlist") {
+      }
+
+      if (item.kind === "playlist") {
+        const params = new URLSearchParams(baseParams);
+        // Real playlist (including RD / radio / mixes).
+        // No single-video loop hack; let YT handle next item.
         params.set("listType", "playlist");
         params.set("list", item.id);
+        if (item.startVideoId) {
+          params.set("v", item.startVideoId);
+        }
         return `https://www.youtube.com/embed?${params.toString()}`;
       }
+
       return "about:blank";
     }
 
@@ -328,7 +337,9 @@
           events: {
             onReady: (e) => {
               const t = loadTime(pkey);
-              if (t > 1) { try { e.target.seekTo(t, true); } catch {} }
+              if (t > 1) {
+                try { e.target.seekTo(t, true); } catch {}
+              }
               try { e.target.playVideo(); } catch {}
             },
             onStateChange: (e) => {
@@ -390,7 +401,7 @@
       ifr.src = embedUrl(item);
       ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope; fullscreen";
       ifr.setAttribute("allowfullscreen", "");
-      ifr.dataset.progressKey = `${item.kind}:${item.id||idx}`;
+      ifr.dataset.progressKey = getItemKey(item);
 
       container.appendChild(ifr);
       cell.appendChild(container);
@@ -558,7 +569,7 @@
         }
         const missing = Math.max(0, total - items.length);
         status.textContent = missing
-          ? `Found ${items.length}/${total} video(s) for “${q}”.`
+          ? `Found ${items.length}/${total} video(s) for “${q}”).`
           : `Loaded ${items.length} videos for “${q}”.`;
         buildTable(items, settings);
         updateLoadedCounts(items);
@@ -650,7 +661,7 @@
             const vids = await fetchPlaylistVideos(it.id, MAX_ITEMS);
             for (const v of vids) {
               if (out.length >= MAX_ITEMS) break;
-              push(out, {kind:"video", id:v});
+              push(out, { kind:"video", id:v });
             }
             playlistsExpanded++;
           } catch (e) {
@@ -772,6 +783,13 @@
             img.decoding = "async";
             img.src = ytThumbUrl(it.id);
             img.alt = "Video";
+            t.appendChild(img);
+          } else if (it && it.kind === "playlist" && it.startVideoId) {
+            const img = document.createElement("img");
+            img.loading = "lazy";
+            img.decoding = "async";
+            img.src = ytThumbUrl(it.startVideoId);
+            img.alt = "Playlist";
             t.appendChild(img);
           } else if (it && it.kind === "playlist") {
             t.textContent = "PL";
@@ -994,22 +1012,8 @@
     });
 
     /***********************
-     * Controls wiring
+     * Aspect mode
      ***********************/
-    document.getElementById("reload").addEventListener("click", () => {
-      loadSelectedIntoGrid(getSelectedIndex());
-      updateFullscreenQr();
-    });
-
-    document.getElementById("fullscreenBtn").addEventListener("click", () => {
-      const wrapper = document.getElementById("gridWrapper");
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
-      } else {
-        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
-      }
-    });
-
     function getAspectMode() {
       const v = localStorage.getItem(ASPECT_MODE_STORE);
       return v === "auto" ? "auto" : "fixed";
@@ -1030,6 +1034,23 @@
       setAspectMode(next);
       renderAspectBtn();
       resizeGrid();
+    });
+
+    /***********************
+     * Controls wiring
+     ***********************/
+    document.getElementById("reload").addEventListener("click", () => {
+      loadSelectedIntoGrid(getSelectedIndex());
+      updateFullscreenQr();
+    });
+
+    document.getElementById("fullscreenBtn").addEventListener("click", () => {
+      const wrapper = document.getElementById("gridWrapper");
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
+      } else {
+        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      }
     });
 
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
