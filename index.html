@@ -21,31 +21,24 @@
     .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
     .toggle-on { background:#0b3a2b; border-color:#134e4a; }
 
-    /* Inline QR (header) */
-    #qrCode {
-      position: static;
-      z-index: 10;
-    }
+    #qrCode { position: static; z-index: 10; }
 
-    /* Fullscreen QR overlay inside gridWrapper */
     #qrCodeOverlay {
-      position: fixed;          /* relative to fullscreen viewport */
+      position: fixed;
       top: 16px;
       right: 16px;
       width: 160px;
       height: auto;
       z-index: 9999;
       pointer-events: none;
-      display: none;            /* shown via .show class + fullscreen */
+      display: none;
     }
 
-    /* Only show overlay when gridWrapper is fullscreen AND JS adds .show */
     #gridWrapper:fullscreen #qrCodeOverlay.show,
     #gridWrapper:-webkit-full-screen #qrCodeOverlay.show {
       display: block;
     }
 
-    /* Sources preview gallery */
     .sources { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin:14px 0 6px; }
     .source-card {
       background:#0d1117; border:1px solid #1c2230; border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px;
@@ -57,7 +50,6 @@
     .source-title { font-weight:700; font-size:14px; letter-spacing:.02em; }
     .counts { font-size:12px; color:#9aa5b1; display:flex; gap:8px; }
 
-    /* Auto-grid preview (scaled) */
     .preview-shell {
       position: relative;
       border: 1px solid #1c2230;
@@ -80,7 +72,7 @@
     .preview-tile {
       position: relative;
       width: 160px;
-      padding-top: 56.25%;          /* 16:9 */
+      padding-top: 56.25%;
       border-radius: 8px;
       overflow: hidden;
       background:#0f1320;
@@ -93,11 +85,9 @@
     }
     .active-source { outline:2px solid #7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25) inset; }
 
-    /* Grid/table for main embeds */
     table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; table-layout: fixed; }
     td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; vertical-align:top; }
 
-    /* Main embeds: padding-top set via JS */
     .video-container { position: relative; width: 100%; padding-top: 56.25%; overflow: hidden; border-radius: 6px; transition: padding-top .12s ease; }
     .video-container iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; border-radius: 6px; }
 
@@ -107,7 +97,6 @@
 
     .error { background:#2b1414; border:1px solid #3b1a1a; color:#ffd5d5; padding:10px; border-radius:10px; white-space:pre-wrap; }
 
-    /* Fullscreen layout for grid */
     #gridWrapper:fullscreen { width:100vw; height:100vh; margin:0; }
     #gridWrapper:fullscreen table { width:100%; height:100%; border-spacing:2px; }
     #gridWrapper:fullscreen td { padding:0; }
@@ -115,12 +104,10 @@
     #gridWrapper:-webkit-full-screen table { width:100%; height:100%; border-spacing:2px; }
     #gridWrapper:-webkit-full-screen td { padding:0; }
 
-    /* Swap-mode UX */
     .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
     .swap-mode .cell { cursor: crosshair; }
     .swap-mode .cell.swap-pending { outline:2px dashed #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
 
-    /* Empty-slot styling */
     .cell.empty {
       display:flex; align-items:center; justify-content:center;
       color:#6b7280; border:1px dashed #2a303d;
@@ -137,7 +124,6 @@
 <body>
   <div class="wrap">
     <h1>📺 Panoptikon 3.0 <span class="badge">Ich ficke deine Mutter</span></h1>
-    <!-- Inline QR (normal mode) -->
     <img id="qrCode" src="QRCodeSheets.png" alt="QR Code" width="200" height="200"><br>
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
@@ -181,9 +167,7 @@
     <div id="error" class="error" style="display:none"></div>
 
     <div id="gridWrapper">
-      <!-- NEW: fullscreen-only QR overlay lives INSIDE the fullscreen element -->
       <img id="qrCodeOverlay" src="QRCodeTelegram.png" alt="QR Code">
-
       <table><tbody id="tbody"></tbody></table>
     </div>
   </div>
@@ -216,70 +200,83 @@
     function getItemKey(it) { return `${it.kind}:${it.id||""}`; }
 
     /***********************
-     * Aspect mode
-     ***********************/
-    function getAspectMode() {
-      const v = localStorage.getItem(ASPECT_MODE_STORE);
-      return v === "auto" ? "auto" : "fixed";
-    }
-    function setAspectMode(v) {
-      localStorage.setItem(ASPECT_MODE_STORE, v === "auto" ? "auto" : "fixed");
-    }
-    function renderAspectBtn() {
-      const btn = document.getElementById("aspectModeBtn");
-      if (!btn) return;
-      const mode = getAspectMode();
-      btn.textContent = mode === "auto" ? "Aspect: AUTO-FIT" : "Aspect: 16:9";
-      btn.classList.toggle("toggle-on", mode === "auto");
-    }
-
-    /***********************
-     * Utilities
-     ***********************/
-    function saveTime(key, seconds) {
-      try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
-    }
-    function loadTime(key) {
-      const v = +localStorage.getItem(POS_PREFIX + key);
-      return Number.isFinite(v) && v > 0 ? v : 0;
-    }
-    function resetProgress() {
-      Object.keys(localStorage).forEach(k => {
-        if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
-      });
-      clearSavedLayout();
-      init();
-    }
-
-    /***********************
      * YouTube parsing + embed
      ***********************/
     function parseYouTube(x) {
       if (!x) return null;
-      x = (""+x).trim();
-      if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return { kind:"video", id:x };
-      if (!/^https?:\/\//i.test(x)) x = "https://" + x;
-      let u; try { u = new URL(x); } catch { return null; }
-      const host = u.hostname.replace(/^www\./,"");
-      const list = u.searchParams.get("list");
+      x = ("" + x).trim();
 
-      if (host === "youtu.be") {
-        const vid = u.pathname.split("/").filter(Boolean)[0];
-        if (list) return { kind:"playlist", id:list };
-        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) return { kind:"video", id:vid };
+      // Raw ID
+      if (/^[a-zA-Z0-9_-]{11}$/.test(x)) {
+        return { kind: "video", id: x };
+      }
+
+      // Ensure protocol
+      if (!/^https?:\/\//i.test(x)) x = "https://" + x;
+
+      let u;
+      try {
+        u = new URL(x);
+      } catch {
         return null;
       }
+
+      const host = u.hostname.replace(/^www\./, "");
+      const v = u.searchParams.get("v");
+      const list = u.searchParams.get("list");
+      const startRadio = u.searchParams.get("start_radio");
+
+      // youtu.be
+      if (host === "youtu.be") {
+        const vid = u.pathname.split("/").filter(Boolean)[0];
+        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
+          return { kind: "video", id: vid };
+        }
+        return null;
+      }
+
+      // not YouTube
       if (!/youtube\.com$/.test(host)) return null;
 
-      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list)) return { kind:"playlist", id:list };
-      const v = u.searchParams.get("v");
-      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return { kind:"video", id:v };
-      const m1 = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
-      if (m1) return { kind:"video", id:m1[1].slice(0,11) };
-      const m2 = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
-      if (m2) return { kind:"video", id:m2[1].slice(0,11) };
+      // radio/mix: treat as plain video for previews
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v) &&
+          (startRadio === "1" || (list && list.startsWith("RD")))) {
+        return { kind: "video", id: v };
+      }
+
+      // real playlists (non-RD)
+      if (list && /^[a-zA-Z0-9_-]{10,}$/.test(list) && !list.startsWith("RD") && startRadio !== "1") {
+        if (!v) {
+          return { kind: "playlist", id: list };
+        }
+        if (/^[a-zA-Z0-9_-]{11}$/.test(v)) {
+          return { kind: "video", id: v };
+        }
+      }
+
+      // standard watch?v=
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+        return { kind: "video", id: v };
+      }
+
+      // shorts
+      let m = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
+      if (m) {
+        return { kind: "video", id: m[1].slice(0, 11) };
+      }
+
+      // embed
+      m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
+      if (m) {
+        return { kind: "video", id: m[1].slice(0, 11) };
+      }
+
+      // fallback: last path segment
       const tail = u.pathname.split("/").filter(Boolean).pop();
-      if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) return { kind:"video", id:tail.slice(0,11) };
+      if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) {
+        return { kind: "video", id: tail.slice(0, 11) };
+      }
+
       return null;
     }
 
@@ -356,6 +353,21 @@
     /***********************
      * Grid helpers
      ***********************/
+    function saveTime(key, seconds) {
+      try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
+    }
+    function loadTime(key) {
+      const v = +localStorage.getItem(POS_PREFIX + key);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    }
+    function resetProgress() {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
+      });
+      clearSavedLayout();
+      init();
+    }
+
     function getGridSettings() {
       const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
       const forced = !!document.getElementById("forceGrid").checked;
@@ -761,6 +773,8 @@
             img.src = ytThumbUrl(it.id);
             img.alt = "Video";
             t.appendChild(img);
+          } else if (it && it.kind === "playlist") {
+            t.textContent = "PL";
           } else {
             t.textContent = "—";
           }
@@ -995,6 +1009,21 @@
         (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
       }
     });
+
+    function getAspectMode() {
+      const v = localStorage.getItem(ASPECT_MODE_STORE);
+      return v === "auto" ? "auto" : "fixed";
+    }
+    function setAspectMode(v) {
+      localStorage.setItem(ASPECT_MODE_STORE, v === "auto" ? "auto" : "fixed");
+    }
+    function renderAspectBtn() {
+      const btn = document.getElementById("aspectModeBtn");
+      if (!btn) return;
+      const mode = getAspectMode();
+      btn.textContent = mode === "auto" ? "Aspect: AUTO-FIT" : "Aspect: 16:9";
+      btn.classList.toggle("toggle-on", mode === "auto");
+    }
 
     document.getElementById("aspectModeBtn").addEventListener("click", () => {
       const next = getAspectMode() === "auto" ? "fixed" : "auto";
