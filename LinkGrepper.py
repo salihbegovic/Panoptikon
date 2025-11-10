@@ -76,7 +76,7 @@ async def main():
                 youtube_links_ordered.append(url)
 
     # Messages are fetched newest → oldest by default, so just write in order
-    with open("links.txt", "w", encoding="utf-8") as f:
+    with open("AllLinks.txt", "w", encoding="utf-8") as f:
         for url in all_links_ordered:
             f.write(url + "\n")
 

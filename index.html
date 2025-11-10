@@ -21,6 +21,30 @@
     .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
     .toggle-on { background:#0b3a2b; border-color:#134e4a; }
 
+    /* Inline QR (header) */
+    #qrCode {
+      position: static;
+      z-index: 10;
+    }
+
+    /* Fullscreen QR overlay inside gridWrapper */
+    #qrCodeOverlay {
+      position: fixed;          /* relative to fullscreen viewport */
+      top: 16px;
+      right: 16px;
+      width: 160px;
+      height: auto;
+      z-index: 9999;
+      pointer-events: none;
+      display: none;            /* shown via .show class + fullscreen */
+    }
+
+    /* Only show overlay when gridWrapper is fullscreen AND JS adds .show */
+    #gridWrapper:fullscreen #qrCodeOverlay.show,
+    #gridWrapper:-webkit-full-screen #qrCodeOverlay.show {
+      display: block;
+    }
+
     /* Sources preview gallery */
     .sources { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin:14px 0 6px; }
     .source-card {
@@ -70,7 +94,7 @@
     .active-source { outline:2px solid #7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25) inset; }
 
     /* Grid/table for main embeds */
-    table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; table-layout: fixed; } /* fixed widths */
+    table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; table-layout: fixed; }
     td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; vertical-align:top; }
 
     /* Main embeds: padding-top set via JS */
@@ -83,7 +107,7 @@
 
     .error { background:#2b1414; border:1px solid #3b1a1a; color:#ffd5d5; padding:10px; border-radius:10px; white-space:pre-wrap; }
 
-    /* Fullscreen */
+    /* Fullscreen layout for grid */
     #gridWrapper:fullscreen { width:100vw; height:100vh; margin:0; }
     #gridWrapper:fullscreen table { width:100%; height:100%; border-spacing:2px; }
     #gridWrapper:fullscreen td { padding:0; }
@@ -106,7 +130,6 @@
     }
     #gridWrapper:fullscreen .cell.empty { min-height: unset; }
 
-    /* Small helpers */
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .spacer { flex:1; }
   </style>
@@ -114,10 +137,10 @@
 <body>
   <div class="wrap">
     <h1>📺 Panoptikon 3.0 <span class="badge">Ich ficke deine Mutter</span></h1>
-    <img src="QRCode.png" alt="QR Code" width="200" height="200"><br>
+    <!-- Inline QR (normal mode) -->
+    <img id="qrCode" src="QRCodeSheets.png" alt="QR Code" width="200" height="200"><br>
     <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
 
-    <!-- Sources preview gallery -->
     <div class="row" style="margin-top:10px;">
       <div class="hint">Everything old - once was young. Everything young - someday dies.</div>
       <div class="spacer"></div>
@@ -136,11 +159,10 @@
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
       <button id="saveLayoutBtn" title="Save current order">Save Layout</button>
-      <button id="clearLayoutBtn" title="Clear saved order">Clear Layout</button>
+      <button id="clearLayoutBtn" title="Clear layout">Clear Layout</button>
       <button id="expandPlaylistsBtn" title="Toggle whether playlists load as one item or expand into all videos">Playlists: ONE item</button>
     </div>
 
-    <!-- YouTube Search (API-based) -->
     <div class="controls">
       <input id="searchInput" type="text" placeholder="Search YouTube (e.g. ambient music)" />
       <button id="searchFillBtn" title="Fill grid with top results for this query">Search Fill</button>
@@ -148,7 +170,6 @@
       <span class="hint">If "Force grid size" is on, search fetches exactly Rows×Columns.</span>
     </div>
 
-    <!-- API key row (stored locally) -->
     <div class="controls">
       <input id="ytApiKey" type="password" placeholder="YouTube Data API key (stored locally)" />
       <button id="saveKeyBtn">Save Key</button>
@@ -156,10 +177,13 @@
     </div>
 
     <div id="status" class="hint"></div>
-    <div class="hint" id="loadedCount" style="margin-top:4px; opacity:.9;"></div>
+    <div id="loadedCount" class="hint" style="margin-top:4px; opacity:.9;"></div>
     <div id="error" class="error" style="display:none"></div>
 
     <div id="gridWrapper">
+      <!-- NEW: fullscreen-only QR overlay lives INSIDE the fullscreen element -->
+      <img id="qrCodeOverlay" src="QRCodeTelegram.png" alt="QR Code">
+
       <table><tbody id="tbody"></tbody></table>
     </div>
   </div>
@@ -176,44 +200,26 @@
       { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" },
       { label: "Telegram Chat", url: "youtube_links.txt" }
     ];
-    const STORAGE_SELECTED = "panoptikon_selected_index"; // active source index
+    const STORAGE_SELECTED = "panoptikon_selected_index";
     const POS_PREFIX = "panoptikon_time_";
     const KEY_STORE = "panoptikon_yt_api_key";
     const REGION_CODE = "AT";
     const MAX_ITEMS = 200;
-    const EXPAND_STORE = "panoptikon_expand_playlists"; // "1" | "0"
-
-    // NEW: layout persistence
+    const EXPAND_STORE = "panoptikon_expand_playlists";
     const LAYOUT_STORE_PREFIX = "panoptikon_layout_";
+    const ASPECT_MODE_STORE = "panoptikon_aspect_mode";
+
     function layoutKey() {
       const label = SOURCES[getSelectedIndex()]?.label || "Sheet";
       return `${LAYOUT_STORE_PREFIX}${label}:${expandPlaylists ? "expanded" : "one"}`;
     }
     function getItemKey(it) { return `${it.kind}:${it.id||""}`; }
-    function saveCurrentLayout() {
-      const order = Array.from(document.querySelectorAll("#tbody .cell iframe"))
-        .map(ifr => ifr?.dataset?.progressKey)
-        .filter(Boolean);
-      try { localStorage.setItem(layoutKey(), JSON.stringify(order)); } catch {}
-      document.getElementById("status").textContent = "Layout saved.";
-    }
-    function loadSavedLayout() {
-      try {
-        const raw = localStorage.getItem(layoutKey());
-        return raw ? JSON.parse(raw) : null;
-      } catch { return null; }
-    }
-    function clearSavedLayout() {
-      localStorage.removeItem(layoutKey());
-    }
 
     /***********************
-     * Aspect mode (default: FIXED 16:9)
+     * Aspect mode
      ***********************/
-    const ASPECT_MODE_STORE = "panoptikon_aspect_mode"; // "auto" | "fixed"
     function getAspectMode() {
       const v = localStorage.getItem(ASPECT_MODE_STORE);
-      // Default to FIXED if nothing stored
       return v === "auto" ? "auto" : "fixed";
     }
     function setAspectMode(v) {
@@ -241,12 +247,13 @@
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
       });
-      // also clear saved layout for current context
       clearSavedLayout();
-      init(); // rebuild grid & previews
+      init();
     }
 
-    // Parse YouTube values from sheets
+    /***********************
+     * YouTube parsing + embed
+     ***********************/
     function parseYouTube(x) {
       if (!x) return null;
       x = (""+x).trim();
@@ -283,7 +290,7 @@
         start: "0", iv_load_policy: "3", rel: "0", playsinline: "1"
       });
       if (item.kind === "video") {
-        params.set("playlist", item.id); // loop same video
+        params.set("playlist", item.id);
         return `https://www.youtube.com/embed/${item.id}?${params.toString()}`;
       } else if (item.kind === "playlist") {
         params.set("listType", "playlist");
@@ -293,18 +300,27 @@
       return "about:blank";
     }
 
-    // YouTube Iframe API for progress resume
+    /***********************
+     * YouTube Iframe API for resume
+     ***********************/
     let ytApiReady = false;
+    const playerIntervals = new Map();
+
     function ensureYouTubeAPI() {
       if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
       if (document.getElementById("yt-iframe-api")) return;
       const tag = document.createElement("script");
-      tag.id = "yt-iframe-api"; tag.src = "https://www.youtube.com/iframe_api";
+      tag.id = "yt-iframe-api";
+      tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
       window.onYouTubeIframeAPIReady = () => { ytApiReady = true; initPlayers(); };
     }
-    const playerIntervals = new Map();
-    function clearPlayerIntervals() { for (const i of playerIntervals.values()) clearInterval(i); playerIntervals.clear(); }
+
+    function clearPlayerIntervals() {
+      for (const i of playerIntervals.values()) clearInterval(i);
+      playerIntervals.clear();
+    }
+
     function initPlayers() {
       if (!ytApiReady) return;
       const iframes = Array.from(document.querySelectorAll("#tbody iframe[data-progress-key]"));
@@ -319,12 +335,18 @@
               try { e.target.playVideo(); } catch {}
             },
             onStateChange: (e) => {
-              try { const cur = e.target.getCurrentTime?.(); if (Number.isFinite(cur)) saveTime(pkey, cur); } catch {}
+              try {
+                const cur = e.target.getCurrentTime?.();
+                if (Number.isFinite(cur)) saveTime(pkey, cur);
+              } catch {}
             }
           }
         });
         const intervalId = setInterval(() => {
-          try { const cur = player.getCurrentTime(); if (Number.isFinite(cur)) saveTime(pkey, cur); } catch {}
+          try {
+            const cur = player.getCurrentTime();
+            if (Number.isFinite(cur)) saveTime(pkey, cur);
+          } catch {}
         }, 3000);
         playerIntervals.set(ifr.id, intervalId);
         ifr.dataset.bound = "1";
@@ -336,8 +358,8 @@
      ***********************/
     function getGridSettings() {
       const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
-      const forced = !!document.getElementById("forceGrid")?.checked;
-      let rows = Math.max(1, Math.min(12, +document.getElementById("rows").value || cols));
+      const forced = !!document.getElementById("forceGrid").checked;
+      const rows = Math.max(1, Math.min(12, +document.getElementById("rows").value || cols));
       return { cols, rows, forced, slots: cols * rows };
     }
 
@@ -352,17 +374,16 @@
 
       const ifr = document.createElement("iframe");
       const iframeId = `playeryt_${item.kind}_${(item.id||"")}_${idx+1}`;
-      ifr.id = iframeId; ifr.src = embedUrl(item);
+      ifr.id = iframeId;
+      ifr.src = embedUrl(item);
       ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope; fullscreen";
-      ifr.setAttribute('allowfullscreen','');
-      ifr.setAttribute('webkitallowfullscreen','');
-      ifr.setAttribute('mozallowfullscreen','');
+      ifr.setAttribute("allowfullscreen", "");
       ifr.dataset.progressKey = `${item.kind}:${item.id||idx}`;
 
       container.appendChild(ifr);
       cell.appendChild(container);
       td.appendChild(cell);
-      cell.addEventListener('click', onCellClick);
+      cell.addEventListener("click", onCellClick);
       return td;
     }
 
@@ -372,7 +393,7 @@
       cell.className = "cell empty";
       cell.dataset.cellIndex = String(idx);
       cell.textContent = "Empty";
-      cell.addEventListener('click', onCellClick);
+      cell.addEventListener("click", onCellClick);
       td.appendChild(cell);
       return td;
     }
@@ -405,17 +426,12 @@
       requestAnimationFrame(resizeGrid);
     }
 
-    /**
-     * Responsive tile aspect based on mode.
-     * - Fixed (default): 16:9
-     * - Auto-fit: adapt to available W/H per cell
-     * Also sets #gridWrapper height to fill remaining viewport when not fullscreen.
-     */
     function resizeGrid() {
       const wrapper = document.getElementById("gridWrapper");
-      const isFS = document.fullscreenElement === wrapper || document.webkitFullscreenElement === wrapper;
+      const isFS =
+        document.fullscreenElement === wrapper ||
+        document.webkitFullscreenElement === wrapper;
 
-      // When not fullscreen, stretch wrapper to fill remaining viewport height under the controls.
       if (!isFS) {
         const top = wrapper.getBoundingClientRect().top;
         const targetH = Math.max(220, window.innerHeight - top - 16);
@@ -423,7 +439,7 @@
       }
 
       const { cols, rows } = getGridSettings();
-      const spacing = isFS ? 2 : 6; // matches CSS table border-spacing we use in FS vs windowed
+      const spacing = isFS ? 2 : 6;
       const rect = wrapper.getBoundingClientRect();
       const availW = Math.max(0, rect.width  - spacing * (cols + 1));
       const availH = Math.max(0, rect.height - spacing * (rows + 1));
@@ -431,16 +447,14 @@
 
       const containers = wrapper.querySelectorAll(".video-container");
 
-      // Mode: fixed (16:9) or auto-fit
       if (getAspectMode() === "fixed") {
         containers.forEach(c => { c.style.paddingTop = "56.25%"; });
         return;
       }
 
-      // AUTO-FIT (adaptive per screen ratio)
       const cellW = availW / cols;
       const cellH = availH / rows;
-      const pct = Math.max(20, Math.min(150, (cellH / cellW) * 100)); // clamp extremes
+      const pct = Math.max(20, Math.min(150, (cellH / cellW) * 100));
       containers.forEach(c => { c.style.paddingTop = pct + "%"; });
     }
 
@@ -448,8 +462,8 @@
      * Search helpers
      ***********************/
     function getApiKey() {
-      const v = localStorage.getItem(KEY_STORE) || "AIzaSyCqWACV98qEukeDyNF6wk7HID_m2XXu8Sc";
-      return v;
+      const v = localStorage.getItem(KEY_STORE);
+      return v || "";
     }
 
     async function searchYouTubeEmbeddable(query, needed, randomize=false) {
@@ -496,7 +510,10 @@
 
       let picked = results.slice(0);
       if (randomize) {
-        for (let i=picked.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [picked[i],picked[j]]=[picked[j],picked[i]]; }
+        for (let i=picked.length-1;i>0;i--) {
+          const j=Math.floor(Math.random()*(i+1));
+          [picked[i],picked[j]]=[picked[j],picked[i]];
+        }
       }
       if (picked.length < needed && allowDup && picked.length > 0) {
         while (picked.length < needed) picked.push(picked[picked.length % results.length]);
@@ -512,14 +529,20 @@
       const error = document.getElementById("error");
       error.style.display = "none";
 
-      if (!q) { error.textContent = "Please enter a search query."; error.style.display = "block"; return; }
+      if (!q) {
+        error.textContent = "Please enter a search query.";
+        error.style.display = "block";
+        return;
+      }
 
       status.textContent = `Searching YouTube for “${q}”… (need ${total} embeddable video${total===1?'':'s'})`;
       try {
         const items = await searchYouTubeEmbeddable(q, total, randomize);
         if (!items.length) {
           error.textContent = "No embeddable videos found for that query.";
-          error.style.display = "block"; status.textContent = ""; return;
+          error.style.display = "block";
+          status.textContent = "";
+          return;
         }
         const missing = Math.max(0, total - items.length);
         status.textContent = missing
@@ -535,8 +558,8 @@
       }
     }
 
-    document.getElementById("searchFillBtn").addEventListener("click", () => { doSearchFill(false); });
-    document.getElementById("randomFillBtn").addEventListener("click", () => { doSearchFill(true); });
+    document.getElementById("searchFillBtn").addEventListener("click", () => doSearchFill(false));
+    document.getElementById("randomFillBtn").addEventListener("click", () => doSearchFill(true));
 
     /***********************
      * Playlist expansion
@@ -544,6 +567,7 @@
     function getExpandPref() { return localStorage.getItem(EXPAND_STORE) === "1"; }
     function setExpandPref(v) { localStorage.setItem(EXPAND_STORE, v ? "1" : "0"); }
     let expandPlaylists = getExpandPref();
+
     const expandBtn = document.getElementById("expandPlaylistsBtn");
     function renderExpandBtn() {
       expandBtn.classList.toggle("toggle-on", expandPlaylists);
@@ -553,8 +577,8 @@
       expandPlaylists = !expandPlaylists;
       setExpandPref(expandPlaylists);
       renderExpandBtn();
-      // Rebuild main grid with current selection
       loadSelectedIntoGrid(getSelectedIndex());
+      updateFullscreenQr();
     });
     renderExpandBtn();
 
@@ -632,12 +656,13 @@
     }
 
     /***********************
-     * Auto-grid previews + selection
+     * Source selection + previews
      ***********************/
-    const cache = new Map(); // label -> {items, counts, thumbs}
+    const cache = new Map();
+
     function getSelectedIndex() {
       let v = +localStorage.getItem(STORAGE_SELECTED);
-      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 0; // default to first sheet
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 0;
       return v;
     }
     function setSelectedIndex(i) {
@@ -646,37 +671,13 @@
     }
 
     function itemCounts(items) {
-      return items.reduce((acc, it) => { acc[it.kind] = (acc[it.kind]||0)+1; return acc; }, {});
+      return items.reduce((acc, it) => {
+        acc[it.kind] = (acc[it.kind]||0)+1;
+        return acc;
+      }, {});
     }
-    function takeVideoThumbs(items, limit=MAX_ITEMS) {
-      const ids = [];
-      for (const it of items) {
-        if (it.kind === "video" && /^[a-zA-Z0-9_-]{11}$/.test(it.id)) {
-          ids.push(it.id);
-        }
-      }
-      return ids.slice(0, limit);
-    }
-    function ytThumbUrl(id) { return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; }
 
-    // Cache for playlist thumbnails
-    const playlistThumbCache = new Map();
-    async function fetchPlaylistThumbUrl(playlistId) {
-      if (playlistThumbCache.has(playlistId)) return playlistThumbCache.get(playlistId);
-      const key = getApiKey();
-      if (!key) return null;
-      try {
-        const url = new URL("https://www.googleapis.com/youtube/v3/playlists");
-        url.search = new URLSearchParams({ key, part: "snippet", id: playlistId }).toString();
-        const r = await fetch(url.toString());
-        if (!r.ok) return null;
-        const data = await r.json();
-        const t = data.items?.[0]?.snippet?.thumbnails || {};
-        const thumb = t.medium?.url || t.standard?.url || t.high?.url || t.default?.url || null;
-        if (thumb) playlistThumbCache.set(playlistId, thumb);
-        return thumb;
-      } catch { return null; }
-    }
+    function ytThumbUrl(id) { return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; }
 
     async function loadAllSources() {
       const previewStatus = document.getElementById("previewStatus");
@@ -685,18 +686,16 @@
         const items = await fetchItems(src.url);
         cache.set(src.label, {
           items,
-          counts: itemCounts(items),
-          thumbs: takeVideoThumbs(items)
+          counts: itemCounts(items)
         });
       });
       await Promise.all(tasks);
-
       buildSourcesPreview();
       previewStatus.textContent = `Loaded ${SOURCES.length} sheet(s).`;
     }
 
     function computeOptimalGrid(n) {
-      n = Math.max(1, Math.min(144, n)); // cap to 12×12 UI limits
+      n = Math.max(1, Math.min(144, n));
       let best = { cols: 1, rows: n, waste: 0, aspect: Infinity };
       for (let cols = 1; cols <= Math.min(12, n); cols++) {
         const rows = Math.ceil(n / cols);
@@ -704,18 +703,13 @@
         const slots = cols * rows;
         const waste = slots - n;
         const aspect = Math.abs(cols - rows);
-        const isBetter =
+        const better =
           waste < best.waste ||
           (waste === best.waste && aspect < best.aspect) ||
           (waste === best.waste && aspect === best.aspect && rows < best.rows);
-        if (isBetter) best = { cols, rows, waste, aspect };
+        if (better) best = { cols, rows, waste, aspect };
       }
       return { cols: best.cols, rows: best.rows, slots: best.cols * best.rows };
-    }
-
-    // Previews are ALWAYS auto-grid now
-    function previewAutoShape(itemsLen) {
-      return computeOptimalGrid(itemsLen || 1);
     }
 
     function buildSourcesPreview() {
@@ -727,83 +721,57 @@
         const data = cache.get(src.label);
         const card = document.createElement("div");
         card.className = "source-card";
-        if (idx === selectedIdx) {
-          card.classList.add("active-source");
-        }
+        if (idx === selectedIdx) card.classList.add("active-source");
 
         const head = document.createElement("div");
         head.className = "source-head";
         const title = document.createElement("div");
         title.className = "source-title";
         title.textContent = src.label + " (Auto)";
-        const counts = document.createElement("div");
-        counts.className = "counts";
+        const countsEl = document.createElement("div");
+        countsEl.className = "counts";
         const v = data?.counts?.video || 0;
         const p = data?.counts?.playlist || 0;
-        counts.textContent = `${v} video${v===1?"":"s"}${p?` · ${p} playlist${p===1?"":"s"}`:""}`;
+        countsEl.textContent = `${v} video${v===1?"":"s"}${p?` · ${p} playlist${p===1?"":"s"}`:""}`;
         head.appendChild(title);
-        head.appendChild(counts);
+        head.appendChild(countsEl);
 
-        // Auto-grid preview (scaled miniature)
         const shell = document.createElement("div");
         shell.className = "preview-shell";
         const scaleWrap = document.createElement("div");
         scaleWrap.className = "preview-scale";
-
-        const items = data?.items || [];
-        const totalItems = items.length;
-        const shape = previewAutoShape(totalItems);
-
         const grid = document.createElement("div");
         grid.className = "preview-grid";
 
-        // Natural sizes used for scaling: tile width=160px, gap=6px (matching CSS)
+        const items = (data?.items || []);
+        const { cols, rows, slots } = computeOptimalGrid(items.length || 1);
         const TILE_W = 160, GAP = 6, TILE_H = Math.round(TILE_W * 9/16);
-        const naturalW = shape.cols * TILE_W + (shape.cols - 1) * GAP;
-        const naturalH = shape.rows * TILE_H + (shape.rows - 1) * GAP;
-        grid.style.gridTemplateColumns = `repeat(${shape.cols}, ${TILE_W}px)`;
+        const naturalW = cols * TILE_W + (cols - 1) * GAP;
+        const naturalH = rows * TILE_H + (rows - 1) * GAP;
+        grid.style.gridTemplateColumns = `repeat(${cols}, ${TILE_W}px)`;
 
-        // Fill tiles: thumbnail for videos, fetched thumbnail for playlists, placeholder otherwise
-        const totalSlots = shape.slots;
-        for (let i = 0; i < totalSlots; i++) {
+        for (let i = 0; i < slots; i++) {
           const t = document.createElement("div");
           t.className = "preview-tile";
-          const item = items[i];
-
-          if (item && item.kind === "video" && /^[a-zA-Z0-9_-]{11}$/.test(item.id)) {
+          const it = items[i];
+          if (it && it.kind === "video" && /^[a-zA-Z0-9_-]{11}$/.test(it.id)) {
             const img = document.createElement("img");
             img.loading = "lazy";
             img.decoding = "async";
-            img.src = ytThumbUrl(item.id);
+            img.src = ytThumbUrl(it.id);
             img.alt = "Video";
             t.appendChild(img);
-          } else if (item && item.kind === "playlist") {
-            t.textContent = "—";
-            fetchPlaylistThumbUrl(item.id).then((url) => {
-              if (!url) return;
-              if (!t.isConnected) return;
-              t.textContent = "";
-              const img = document.createElement("img");
-              img.loading = "lazy";
-              img.decoding = "async";
-              img.src = url;
-              img.alt = "Playlist";
-              t.appendChild(img);
-            }).catch(() => {});
           } else {
             t.textContent = "—";
           }
           grid.appendChild(t);
         }
 
-        // Mount and scale to fit card
         scaleWrap.appendChild(grid);
         shell.appendChild(scaleWrap);
-
-        // After in DOM, compute scale
         queueMicrotask(() => {
-          const cardWidth = card.clientWidth - 20; // padding approx
-          const maxHeight = 240; // shell height
+          const cardWidth = card.clientWidth - 20;
+          const maxHeight = 240;
           const scale = Math.min(cardWidth / naturalW, maxHeight / naturalH, 1);
           scaleWrap.style.transform = `scale(${Number.isFinite(scale) && scale > 0 ? scale : 1})`;
         });
@@ -816,6 +784,7 @@
           Array.from(document.querySelectorAll(".source-card")).forEach(c => c.classList.remove("active-source"));
           card.classList.add("active-source");
           loadSelectedIntoGrid(idx);
+          updateFullscreenQr();
         });
 
         wrap.appendChild(card);
@@ -828,10 +797,8 @@
     }
 
     function applyGridToInputs(cols, rows) {
-      const colsEl = document.getElementById("cols");
-      const rowsEl = document.getElementById("rows");
-      colsEl.value = String(cols);
-      rowsEl.value = String(rows);
+      document.getElementById("cols").value = String(cols);
+      document.getElementById("rows").value = String(rows);
     }
 
     async function loadSelectedIntoGrid(idx) {
@@ -845,21 +812,17 @@
       try {
         let items = getCurrentItemsForIndex(idx).slice(0, MAX_ITEMS);
 
-        // Expand playlists if toggle is ON
         if (expandPlaylists) items = await expandPlaylistsIfEnabled(items, true);
 
-        // Apply saved layout (if any) BEFORE auto/force sizing
         const savedOrder = loadSavedLayout();
         if (Array.isArray(savedOrder) && savedOrder.length) {
           const byKey = new Map(items.map(it => [getItemKey(it), it]));
           const picked = [];
           const seen = new Set();
-          // First: items that exist in saved order
           for (const k of savedOrder) {
             const it = byKey.get(k);
             if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
           }
-          // Then: any remaining items not in the saved order
           for (const it of items) {
             const k = getItemKey(it);
             if (!seen.has(k)) { picked.push(it); seen.add(k); }
@@ -867,7 +830,6 @@
           items = picked;
         }
 
-        // Auto grid when NOT forced
         const forceGridEl = document.getElementById("forceGrid");
         if (!forceGridEl.checked) {
           const n = items.length || 1;
@@ -880,7 +842,7 @@
         const missing = settings.forced ? Math.max(0, settings.slots - display.length) : 0;
 
         const label = SOURCES[idx]?.label || "Sheet";
-        document.getElementById("loadedCount").textContent =
+        loadedCountEl.textContent =
           `Loaded embeds: ${display.length} from ${label}${expandPlaylists ? " (playlists expanded)" : ""}`;
 
         const summary = settings.forced
@@ -889,6 +851,7 @@
 
         status.textContent = summary + (missing ? ` (showing ${missing} empty slot${missing===1?"":"s"})` : "");
         buildTable(display, settings);
+        updateFullscreenQr();
       } catch (e) {
         status.textContent = "";
         document.getElementById("loadedCount").textContent = "";
@@ -898,9 +861,26 @@
       }
     }
 
+    function saveCurrentLayout() {
+      const order = Array.from(document.querySelectorAll("#tbody .cell iframe"))
+        .map(ifr => ifr?.dataset?.progressKey)
+        .filter(Boolean);
+      try { localStorage.setItem(layoutKey(), JSON.stringify(order)); } catch {}
+      document.getElementById("status").textContent = "Layout saved.";
+    }
+    function loadSavedLayout() {
+      try {
+        const raw = localStorage.getItem(layoutKey());
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    }
+    function clearSavedLayout() {
+      localStorage.removeItem(layoutKey());
+    }
+
     function updateLoadedCounts(displayItems) {
-      const loadedCountEl = document.getElementById("loadedCount");
-      loadedCountEl.textContent = `Loaded embeds: ${displayItems.length}`;
+      document.getElementById("loadedCount").textContent =
+        `Loaded embeds: ${displayItems.length}`;
     }
 
     /***********************
@@ -908,55 +888,105 @@
      ***********************/
     let swapMode = false;
     let firstCell = null;
-    const swapBtn = document.getElementById('swapModeBtn');
-    swapBtn.addEventListener('click', () => {
+    const swapBtn = document.getElementById("swapModeBtn");
+
+    swapBtn.addEventListener("click", () => {
       swapMode = !swapMode;
-      swapBtn.classList.toggle('toggle-on', swapMode);
-      swapBtn.textContent = swapMode ? 'Swap Mode: ON' : 'Swap Mode';
-      document.body.classList.toggle('swap-mode', swapMode);
-      clearSwapHighlights(); firstCell = null;
+      swapBtn.classList.toggle("toggle-on", swapMode);
+      swapBtn.textContent = swapMode ? "Swap Mode: ON" : "Swap Mode";
+      document.body.classList.toggle("swap-mode", swapMode);
+      clearSwapHighlights();
+      firstCell = null;
     });
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && swapMode) {
-        swapMode = false; document.body.classList.remove('swap-mode');
-        swapBtn.classList.remove('toggle-on'); swapBtn.textContent = 'Swap Mode';
-        clearSwapHighlights(); firstCell = null;
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && swapMode) {
+        swapMode = false;
+        document.body.classList.remove("swap-mode");
+        swapBtn.classList.remove("toggle-on");
+        swapBtn.textContent = "Swap Mode";
+        clearSwapHighlights();
+        firstCell = null;
       }
     });
+
     function clearSwapHighlights() {
-      document.querySelectorAll('.cell').forEach(c => c.classList.remove('swap-highlight','swap-pending'));
+      document.querySelectorAll(".cell").forEach(c => c.classList.remove("swap-highlight","swap-pending"));
     }
+
     function onCellClick(e) {
       if (!swapMode) return;
       const cell = e.currentTarget;
-      if (!firstCell) { firstCell = cell; clearSwapHighlights(); cell.classList.add('swap-pending'); return; }
-      if (cell === firstCell) { firstCell.classList.remove('swap-pending'); firstCell = null; return; }
+      if (!firstCell) {
+        firstCell = cell;
+        clearSwapHighlights();
+        cell.classList.add("swap-pending");
+        return;
+      }
+      if (cell === firstCell) {
+        firstCell.classList.remove("swap-pending");
+        firstCell = null;
+        return;
+      }
       swapCellContents(firstCell, cell);
-      firstCell.classList.remove('swap-pending'); cell.classList.add('swap-highlight');
-      setTimeout(() => { cell.classList.remove('swap-highlight'); }, 400);
-      firstCell = null; requestAnimationFrame(() => { ensureYouTubeAPI(); resizeGrid(); });
-      // Auto-save new order after each completed swap
+      firstCell.classList.remove("swap-pending");
+      cell.classList.add("swap-highlight");
+      setTimeout(() => { cell.classList.remove("swap-highlight"); }, 400);
+      firstCell = null;
+      requestAnimationFrame(() => { ensureYouTubeAPI(); resizeGrid(); });
       saveCurrentLayout();
     }
+
     function swapCellContents(cellA, cellB) {
-      const tempA = document.createElement('div');
+      const tempA = document.createElement("div");
       while (cellA.firstChild) tempA.appendChild(cellA.firstChild);
-      const tempB = document.createElement('div');
+      const tempB = document.createElement("div");
       while (cellB.firstChild) tempB.appendChild(cellB.firstChild);
       while (tempB.firstChild) cellA.appendChild(tempB.firstChild);
       while (tempA.firstChild) cellB.appendChild(tempA.firstChild);
-      const hasIframeA = !!cellA.querySelector('iframe');
-      const hasIframeB = !!cellB.querySelector('iframe');
-      cellA.classList.toggle('empty', !hasIframeA);
-      cellB.classList.toggle('empty', !hasIframeB);
+      const hasIframeA = !!cellA.querySelector("iframe");
+      const hasIframeB = !!cellB.querySelector("iframe");
+      cellA.classList.toggle("empty", !hasIframeA);
+      cellB.classList.toggle("empty", !hasIframeB);
     }
 
     /***********************
-     * Wiring + Boot
+     * Fullscreen + QR overlay
+     ***********************/
+    function updateFullscreenQr() {
+      const wrapper = document.getElementById("gridWrapper");
+      const overlay = document.getElementById("qrCodeOverlay");
+      if (!overlay) return;
+      const isFS =
+        document.fullscreenElement === wrapper ||
+        document.webkitFullscreenElement === wrapper;
+      const selectedLabel = SOURCES[getSelectedIndex()]?.label || "";
+      const shouldShow = isFS && selectedLabel === "Telegram Chat";
+      overlay.classList.toggle("show", !!shouldShow);
+    }
+
+    function handleFullscreenChange() {
+      resizeGrid();
+      updateFullscreenQr();
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+    window.addEventListener("resize", () => {
+      buildSourcesPreview();
+      resizeGrid();
+      updateFullscreenQr();
+    });
+
+    /***********************
+     * Controls wiring
      ***********************/
     document.getElementById("reload").addEventListener("click", () => {
       loadSelectedIntoGrid(getSelectedIndex());
+      updateFullscreenQr();
     });
+
     document.getElementById("fullscreenBtn").addEventListener("click", () => {
       const wrapper = document.getElementById("gridWrapper");
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -966,47 +996,51 @@
       }
     });
 
-    // Aspect mode toggle
-    const aspectBtn = document.getElementById("aspectModeBtn");
-    aspectBtn.addEventListener("click", () => {
+    document.getElementById("aspectModeBtn").addEventListener("click", () => {
       const next = getAspectMode() === "auto" ? "fixed" : "auto";
       setAspectMode(next);
       renderAspectBtn();
-      resizeGrid(); // reflow immediately
+      resizeGrid();
     });
 
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
 
-    // Layout buttons
     document.getElementById("saveLayoutBtn").addEventListener("click", saveCurrentLayout);
     document.getElementById("clearLayoutBtn").addEventListener("click", () => {
       clearSavedLayout();
       document.getElementById("status").textContent = "Saved layout cleared.";
     });
 
-    // Resize handlers
-    document.addEventListener("fullscreenchange", resizeGrid);
-    document.addEventListener("webkitfullscreenchange", resizeGrid);
-    window.addEventListener("resize", () => {
-      // Rescale previews on resize
-      buildSourcesPreview();
-      // Keep tiles fitting on resize
-      resizeGrid();
-    });
-
-    // API key handling
     document.getElementById("saveKeyBtn").addEventListener("click", () => {
       const input = document.getElementById("ytApiKey");
       const v = input.value.trim();
-      if (!v) { localStorage.removeItem(KEY_STORE); document.getElementById("keyStatus").textContent = "Cleared API key."; return; }
+      if (!v) {
+        localStorage.removeItem(KEY_STORE);
+        document.getElementById("keyStatus").textContent = "Cleared API key.";
+        return;
+      }
       localStorage.setItem(KEY_STORE, v);
       input.value = "••••••••••••";
       document.getElementById("keyStatus").textContent = "API key saved locally.";
     });
 
-    // Boot
+    /***********************
+     * Boot
+     ***********************/
+    async function fetchItems(url) {
+      const res = await fetch(url, { credentials: "omit", cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
+      const text = await res.text();
+      if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const values = lines.map(l =>
+        (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l
+      );
+      if (values.length && !parseYouTube(values[0])) values.shift();
+      return values.map(parseYouTube).filter(Boolean).slice(0, MAX_ITEMS);
+    }
+
     async function init() {
-      // hydrate key label
       const k = localStorage.getItem(KEY_STORE) || "";
       const keyInput = document.getElementById("ytApiKey");
       keyInput.value = k ? "••••••••••••" : "";
@@ -1020,31 +1054,19 @@
         error.style.display = "block";
       }
 
-      // Load previously selected, default to first sheet
       const selected = getSelectedIndex();
       setSelectedIndex(selected);
-      loadSelectedIntoGrid(selected);
+      await loadSelectedIntoGrid(selected);
 
-      // Render aspect button to reflect stored/default mode
       renderAspectBtn();
-
-      // First layout pass
-      requestAnimationFrame(resizeGrid);
-    }
-
-    // Lightweight fetch of sheet items
-    async function fetchItems(url) {
-      const res = await fetch(url, { credentials: "omit", cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
-      const text = await res.text();
-      if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const values = lines.map(l => (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l);
-      if (values.length && !parseYouTube(values[0])) values.shift(); // drop header if present
-      return values.map(parseYouTube).filter(Boolean).slice(0, MAX_ITEMS);
+      requestAnimationFrame(() => {
+        resizeGrid();
+        updateFullscreenQr();
+      });
     }
 
     init();
   </script>
 </body>
 </html>
+
