@@ -1,15 +1,16 @@
 # get_links_from_telegram_live.py
 #
-# - Fetch existing links from the Telegram chat (via invite link)
-# - Save unique links (newest -> oldest, same as your working script)
-# - Then listen for new messages in that chat and append new unique links
+# - Fetch existing messages from the Telegram chat (via invite link)
+# - Extract all URLs, filter YouTube links
+# - Keep unique links across restarts (via AllLinks.txt / youtube_links.txt)
+# - Then listen live and append new unique links as they arrive
 #
 # Requirements:
 #   pip install telethon
 #
-# Output:
-#   - AllLinks.txt         -> every unique link (newest → oldest on initial run, then appended)
-#   - youtube_links.txt    -> only unique YouTube links
+# Output files (in same folder as index.html):
+#   - AllLinks.txt         -> every unique URL from the chat
+#   - youtube_links.txt    -> every unique YouTube URL (this is what index.html reads)
 
 import re
 import os
@@ -19,12 +20,12 @@ from telethon import TelegramClient, events
 from telethon.errors import rpcerrorlist
 
 # ---------- CONFIG ----------
-api_id = 31184561
-api_hash = "a9bfdde6cfe48313a46cc895ab3217ee"
+api_id = 31184561  # replace if needed
+api_hash = "a9bfdde6cfe48313a46cc895ab3217ee"  # replace if needed
 session_name = "panoptikon_links"
 
-INVITE_LINK = "https://t.me/+VSZz8Z5oo_w2MDRk"
-MESSAGE_LIMIT = None  # None = all available
+INVITE_LINK = "https://t.me/+VSZz8Z5oo_w2MDRk"  # your chat's invite link
+MESSAGE_LIMIT = None  # None = all available history
 # ----------------------------
 
 URL_REGEX = re.compile(
@@ -44,8 +45,7 @@ def is_youtube(url: str) -> bool:
 
 def load_existing_links_from_files():
     """
-    If you restart the script, we don't want to re-add the same URLs.
-    Reads from AllLinks.txt and youtube_links.txt if they exist.
+    Make sure we don't re-add URLs across restarts.
     """
     existing = set()
 
@@ -94,10 +94,9 @@ async def main():
 
     print(f"Fetching messages from: {getattr(entity, 'title', str(entity))}")
 
-    # Track seen links (include existing from disk so no dupes between runs)
     seen_links = load_existing_links_from_files()
 
-    # ---------- INITIAL FETCH (your original behavior) ----------
+    # ---------- INITIAL FETCH ----------
     new_links = []
     new_yt_links = []
 
@@ -116,7 +115,6 @@ async def main():
             if is_youtube(url):
                 new_yt_links.append(url)
 
-    # Messages are newest → oldest by default; we keep that order
     append_links(new_links, new_yt_links)
 
     print(f"Initial fetch done.")
@@ -152,11 +150,9 @@ async def main():
         for u in added:
             print("   ", u)
 
-    # Only listen to messages from THIS chat
     client.add_event_handler(handle_new_message, events.NewMessage(chats=entity))
 
     print("Now listening for new messages in that chat...")
-    # This "hangs" by design: it's the long-running listener loop.
     await client.run_until_disconnected()
 
 

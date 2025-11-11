@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Telegram Live Video Wall</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #fff;
+    font-family: sans-serif;
+    height: 100%;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.7);
+    padding: 6px 12px;
+    position: relative;
+    z-index: 10;
+  }
+  h1 {
+    font-size: 16px;
+    margin: 0;
+    opacity: 0.8;
+  }
+  button {
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  input {
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 2px 6px;
+  }
+  #wall {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* default 4 columns */
+    grid-auto-rows: 1fr;
+    gap: 6px;
+    width: 100%;
+    height: calc(100% - 36px);
+    padding: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .tile {
+    position: relative;
+    background: #111;
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+  }
+  iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .timestamp {
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  :fullscreen #wall,
+  :-webkit-full-screen #wall {
+    height: 100%;
+    padding: 8px;
+  }
+  :fullscreen header,
+  :-webkit-full-screen header {
+    display: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Telegram Live Wall</h1>
+  <div>
+    <label style="margin-right:8px;">
+      Columns:
+      <input id="cols" type="number" min="1" max="10" value="4" style="width:50px;">
+    </label>
+    <label style="margin-right:8px;">
+      Max Videos:
+      <input id="maxVideos" type="number" min="1" max="200" value="40" style="width:60px;">
+    </label>
+    <button id="applyGrid">Apply</button>
+    <button id="fullscreenBtn">Fullscreen</button>
+  </div>
+</header>
+
+<div id="wall"></div>
+
+<script>
+const FILE_URL = "youtube_links.txt";   // Telethon output file
+const POLL_INTERVAL = 3000;             // ms between checks
+let MAX_VIDEOS = 40;                    // default, can change in UI
+
+const wall = document.getElementById("wall");
+let known = new Set();
+
+function ytEmbed(id) {
+  const p = new URLSearchParams({
+    autoplay: 1, mute: 1, loop: 1,
+    playlist: id, rel: 0, controls: 1, playsinline: 1
+  });
+  return `https://www.youtube.com/embed/${id}?${p.toString()}`;
+}
+
+function parseId(line) {
+  line = line.trim();
+  if (!line) return null;
+  if (/^[\w-]{11}$/.test(line)) return line;
+  const m = line.match(/[?&]v=([\w-]{11})/);
+  if (m) return m[1];
+  const s = line.match(/youtu\.be\/([\w-]{11})/);
+  if (s) return s[1];
+  return null;
+}
+
+async function poll() {
+  try {
+    const res = await fetch(FILE_URL + "?_=" + Date.now(), {cache:"no-store"});
+    if (!res.ok) return;
+    const text = await res.text();
+    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const id = parseId(line);
+      if (!id || known.has(id)) continue;
+      known.add(id);
+      addVideo(id);
+      maintainLimit();
+    }
+  } catch(e) {
+    console.error("poll error", e);
+  } finally {
+    setTimeout(poll, POLL_INTERVAL);
+  }
+}
+
+function addVideo(id) {
+  const div = document.createElement("div");
+  div.className = "tile";
+  const ifr = document.createElement("iframe");
+  ifr.src = ytEmbed(id);
+  ifr.allow = "autoplay; encrypted-media; picture-in-picture";
+  const ts = document.createElement("div");
+  ts.className = "timestamp";
+  ts.textContent = new Date().toLocaleTimeString();
+  div.append(ifr, ts);
+  wall.insertBefore(div, wall.firstChild); // newest on top
+}
+
+function maintainLimit() {
+  while (wall.children.length > MAX_VIDEOS) {
+    const last = wall.lastElementChild;
+    if (last) wall.removeChild(last);
+  }
+}
+
+// Controls
+document.getElementById("applyGrid").onclick = () => {
+  const cols = Math.max(1, Math.min(10, +document.getElementById("cols").value || 4));
+  wall.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  MAX_VIDEOS = Math.max(1, Math.min(200, +document.getElementById("maxVideos").value || 40));
+};
+
+// Fullscreen controls
+document.getElementById("fullscreenBtn").onclick = () => {
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  }
+};
+
+// start the loop
+poll();
+</script>
+</body>
+</html>
+

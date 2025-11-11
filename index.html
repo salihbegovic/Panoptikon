@@ -5,23 +5,78 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Panoptikon 3.0 — Videos & Playlists</title>
   <style>
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; background:#0b0c10; color:#e8ecf1; }
-    .wrap { max-width: 1800px; margin: 20px auto; padding: 12px; }
-    h1 { font-size: clamp(20px,3.2vw,30px); margin: 0 0 12px; display:flex; align-items:center; gap:10px; }
-    .hint { color:#a7b0bb; font-size:14px; margin-bottom:10px; }
-    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-    input[type="number"], select, input[type="text"], input[type="password"] {
-      padding:6px 8px; border-radius:8px; border:1px solid #2a303d; background:#0f1320; color:#e8ecf1;
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      background: #0b0c10;
+      color: #e8ecf1;
     }
-    input[type="number"] { width:80px; }
-    input[type="text"] { width:260px; }
-    input[type="password"] { width:300px; }
-    button { cursor:pointer; border:1px solid #2a303d; background:#111827; color:#e8ecf1; padding:8px 12px; border-radius:10px; font-weight:600; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    .badge { font-size:11px; opacity:.8; padding:2px 6px; border:1px solid #2a303d; border-radius:999px; }
-    .toggle-on { background:#0b3a2b; border-color:#134e4a; }
+    .wrap {
+      max-width: 1800px;
+      margin: 20px auto;
+      padding: 12px;
+    }
+    h1 {
+      font-size: clamp(20px,3.2vw,30px);
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hint {
+      color: #a7b0bb;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 8px 0;
+    }
+    input[type="number"],
+    input[type="text"],
+    input[type="password"] {
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #2a303d;
+      background: #0f1320;
+      color: #e8ecf1;
+    }
+    input[type="number"] { width: 80px; }
+    input[type="text"] { width: 260px; }
+    input[type="password"] { width: 300px; }
 
-    #qrCode { position: static; z-index: 10; }
+    button {
+      cursor: pointer;
+      border: 1px solid #2a303d;
+      background: #111827;
+      color: #e8ecf1;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+    .badge {
+      font-size: 11px;
+      opacity: .8;
+      padding: 2px 6px;
+      border: 1px solid #2a303d;
+      border-radius: 999px;
+    }
+    .toggle-on {
+      background: #0b3a2b;
+      border-color: #134e4a;
+    }
+
+    #qrCode {
+      position: static;
+      z-index: 10;
+    }
 
     #qrCodeOverlay {
       position: fixed;
@@ -33,22 +88,51 @@
       pointer-events: none;
       display: none;
     }
-
     #gridWrapper:fullscreen #qrCodeOverlay.show,
     #gridWrapper:-webkit-full-screen #qrCodeOverlay.show {
       display: block;
     }
 
-    .sources { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin:14px 0 6px; }
-    .source-card {
-      background:#0d1117; border:1px solid #1c2230; border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px;
-      transition: transform .1s ease, box-shadow .1s ease, border-color .1s ease;
-      cursor:pointer; min-height: 180px;
+    .sources {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 14px 0 6px;
     }
-    .source-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.25); border-color:#2a303d; }
-    .source-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-    .source-title { font-weight:700; font-size:14px; letter-spacing:.02em; }
-    .counts { font-size:12px; color:#9aa5b1; display:flex; gap:8px; }
+    .source-card {
+      background: #0d1117;
+      border: 1px solid #1c2230;
+      border-radius: 12px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: transform .1s ease, box-shadow .1s ease, border-color .1s ease;
+      cursor: pointer;
+      min-height: 180px;
+    }
+    .source-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      border-color: #2a303d;
+    }
+    .source-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .source-title {
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: .02em;
+    }
+    .counts {
+      font-size: 12px;
+      color: #9aa5b1;
+      display: flex;
+      gap: 8px;
+    }
 
     .preview-shell {
       position: relative;
@@ -61,7 +145,8 @@
     }
     .preview-scale {
       position: absolute;
-      top: 6px; left: 6px;
+      top: 6px;
+      left: 6px;
       transform-origin: top left;
     }
     .preview-grid {
@@ -75,63 +160,167 @@
       padding-top: 56.25%;
       border-radius: 8px;
       overflow: hidden;
-      background:#0f1320;
-      border:1px solid #1c2230;
-      display:flex; align-items:center; justify-content:center;
-      color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+      background: #0f1320;
+      border: 1px solid #1c2230;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
     }
     .preview-tile img {
-      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
-    .active-source { outline:2px solid #7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25) inset; }
+    .active-source {
+      outline: 2px solid #7dd3fc;
+      box-shadow: 0 0 0 3px rgba(125,211,252,.25) inset;
+    }
 
-    table { border-collapse:separate; border-spacing:6px; margin:auto; width:100%; table-layout: fixed; }
-    td { background:#0d1117; border:1px solid #1c2230; border-radius:8px; padding:0; vertical-align:top; }
+    table {
+      border-collapse: separate;
+      border-spacing: 6px;
+      margin: auto;
+      width: 100%;
+      table-layout: fixed;
+    }
+    td {
+      background: #0d1117;
+      border: 1px solid #1c2230;
+      border-radius: 8px;
+      padding: 0;
+      vertical-align: top;
+    }
 
-    .video-container { position: relative; width: 100%; padding-top: 56.25%; overflow: hidden; border-radius: 6px; transition: padding-top .12s ease; }
-    .video-container iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; border-radius: 6px; }
+    .video-container {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%;
+      overflow: hidden;
+      border-radius: 6px;
+      transition: padding-top .12s ease;
+    }
+    .video-container iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      border-radius: 6px;
+    }
 
-    .cell { position:relative; border-radius:8px; }
-    .cell.swap-highlight { outline:2px solid #7dd3fc; box-shadow:0 0 0 3px rgba(125,211,252,.25) inset; }
-    .cell.swap-pending { outline:2px solid #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
+    .cell {
+      position: relative;
+      border-radius: 8px;
+    }
+    .cell.swap-highlight {
+      outline: 2px solid #7dd3fc;
+      box-shadow: 0 0 0 3px rgba(125,211,252,.25) inset;
+    }
+    .cell.swap-pending {
+      outline: 2px solid #a78bfa;
+      box-shadow: 0 0 0 3px rgba(167,139,250,.25) inset;
+    }
 
-    .error { background:#2b1414; border:1px solid #3b1a1a; color:#ffd5d5; padding:10px; border-radius:10px; white-space:pre-wrap; }
+    .error {
+      background: #2b1414;
+      border: 1px solid #3b1a1a;
+      color: #ffd5d5;
+      padding: 10px;
+      border-radius: 10px;
+      white-space: pre-wrap;
+    }
 
-    #gridWrapper:fullscreen { width:100vw; height:100vh; margin:0; }
-    #gridWrapper:fullscreen table { width:100%; height:100%; border-spacing:2px; }
-    #gridWrapper:fullscreen td { padding:0; }
-    #gridWrapper:-webkit-full-screen { width:100vw; height:100vh; }
-    #gridWrapper:-webkit-full-screen table { width:100%; height:100%; border-spacing:2px; }
-    #gridWrapper:-webkit-full-screen td { padding:0; }
+    #gridWrapper:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+    }
+    #gridWrapper:fullscreen table {
+      width: 100%;
+      height: 100%;
+      border-spacing: 2px;
+    }
+    #gridWrapper:fullscreen td {
+      padding: 0;
+    }
+    #gridWrapper:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+    }
+    #gridWrapper:-webkit-full-screen table {
+      width: 100%;
+      height: 100%;
+      border-spacing: 2px;
+    }
+    #gridWrapper:-webkit-full-screen td {
+      padding: 0;
+    }
 
-    .swap-mode iframe { pointer-events:none; filter: saturate(0.9) brightness(0.95); }
-    .swap-mode .cell { cursor: crosshair; }
-    .swap-mode .cell.swap-pending { outline:2px dashed #a78bfa; box-shadow:0 0 0 3px rgba(167,139,250,.25) inset; }
+    .swap-mode iframe {
+      pointer-events: none;
+      filter: saturate(0.9) brightness(0.95);
+    }
+    .swap-mode .cell {
+      cursor: crosshair;
+    }
+    .swap-mode .cell.swap-pending {
+      outline: 2px dashed #a78bfa;
+      box-shadow: 0 0 0 3px rgba(167,139,250,.25) inset;
+    }
 
     .cell.empty {
-      display:flex; align-items:center; justify-content:center;
-      color:#6b7280; border:1px dashed #2a303d;
-      border-radius:8px; background:repeating-linear-gradient(45deg,#0d1117,#0d1117 8px,#0f1320 8px,#0f1320 16px);
-      font-size:12px; letter-spacing:.04em; text-transform:uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6b7280;
+      border: 1px dashed #2a303d;
+      border-radius: 8px;
+      background: repeating-linear-gradient(
+        45deg,
+        #0d1117,
+        #0d1117 8px,
+        #0f1320 8px,
+        #0f1320 16px
+      );
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
       min-height: 200px;
     }
-    #gridWrapper:fullscreen .cell.empty { min-height: unset; }
+    #gridWrapper:fullscreen .cell.empty {
+      min-height: unset;
+    }
 
-    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .spacer { flex:1; }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .spacer { flex: 1; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>📺 Panoptikon 3.0 <span class="badge">Ich ficke deine Mutter</span></h1>
     <img id="qrCode" src="QRCodeSheets.png" alt="QR Code" width="200" height="200"><br>
-    <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">The links are to be put in the google sheet</a>
+    <a href="https://docs.google.com/spreadsheets/d/1wtC8tG9LB4RhvqWBPHyJdBDbvtlwXkd1IcvXL8AR_yM/edit?usp=sharing" target="_blank">
+      The links are to be put in the google sheet
+    </a>
 
     <div class="row" style="margin-top:10px;">
       <div class="hint">Everything old - once was young. Everything young - someday dies.</div>
       <div class="spacer"></div>
       <span class="hint" id="previewStatus"></span>
     </div>
+
     <div id="sourcesPreview" class="sources"></div>
 
     <div class="controls">
@@ -177,28 +366,62 @@
      * Config
      ***********************/
     const SOURCES = [
-      { label: "Sheet 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=0&single=true&output=csv"},
-      { label: "Sheet 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=331016320&single=true&output=csv" },
-      { label: "Sheet 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=181596337&single=true&output=csv" },
-      { label: "Sheet 4", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv" },
-      { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" },
-      { label: "Telegram Chat", url: "youtube_links.txt" }
+      {
+        label: "Sheet 1",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=0&single=true&output=csv"
+      },
+      {
+        label: "Sheet 2",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=331016320&single=true&output=csv"
+      },
+      {
+        label: "Sheet 3",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=181596337&single=true&output=csv"
+      },
+      {
+        label: "Sheet 4",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv"
+      },
+      {
+        label: "Sheet 5",
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv"
+      },
+      {
+        label: "Telegram Chat",
+        url: "youtube_links.txt"
+      }
     ];
-    const STORAGE_SELECTED = "panoptikon_selected_index";
-    const POS_PREFIX = "panoptikon_time_";
-    const KEY_STORE = "panoptikon_yt_api_key";
-    const REGION_CODE = "AT";
-    const MAX_ITEMS = 200;
-    const EXPAND_STORE = "panoptikon_expand_playlists";
+
+    // Telegram live behaviour config
+    const TELEGRAM_LABEL = "Telegram Chat";
+    const TELEGRAM_MAX_VIDEOS = 40;       // how many recent videos to keep visible
+    const TELEGRAM_POLL_INTERVAL = 3000;  // ms between checks of youtube_links.txt
+
+    // Local storage keys etc
+    const STORAGE_SELECTED    = "panoptikon_selected_index";
+    const POS_PREFIX          = "panoptikon_time_";
+    const KEY_STORE           = "panoptikon_yt_api_key";
+    const REGION_CODE         = "AT";
+    const MAX_ITEMS           = 200;
+    const EXPAND_STORE        = "panoptikon_expand_playlists";
     const LAYOUT_STORE_PREFIX = "panoptikon_layout_";
-    const ASPECT_MODE_STORE = "panoptikon_aspect_mode";
+    const ASPECT_MODE_STORE   = "panoptikon_aspect_mode";
+
+    let telegramLastLineCount = 0;
+    let telegramLiveTimer = null;
+    let ytApiReady = false;
+    const playerIntervals = new Map();
+    const cache = new Map();
+
+    // For Telegram incremental updates: track current displayed keys (newest-first)
+    let telegramDisplayKeys = [];
 
     function layoutKey() {
       const label = SOURCES[getSelectedIndex()]?.label || "Sheet";
       return `${LAYOUT_STORE_PREFIX}${label}:${expandPlaylists ? "expanded" : "one"}`;
     }
+
     function getItemKey(it) {
-      // include startVideoId so layouts don't collide weirdly
       return `${it.kind}:${it.id || ""}:${it.startVideoId || ""}`;
     }
 
@@ -209,12 +432,10 @@
       if (!x) return null;
       x = ("" + x).trim();
 
-      // Raw ID
       if (/^[a-zA-Z0-9_-]{11}$/.test(x)) {
         return { kind: "video", id: x };
       }
 
-      // Ensure protocol
       if (!/^https?:\/\//i.test(x)) x = "https://" + x;
 
       let u;
@@ -224,20 +445,15 @@
       const v = u.searchParams.get("v") || undefined;
       const list = u.searchParams.get("list") || undefined;
 
-      // youtu.be short
       if (host === "youtu.be") {
         const vid = u.pathname.split("/").filter(Boolean)[0];
-        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
-          return { kind: "video", id: vid };
-        }
+        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) return { kind: "video", id: vid };
         return null;
       }
 
       if (!/youtube\.com$/.test(host)) return null;
 
-      // If there's a list param → treat as playlist, including RD (radio/mix)
       if (list && /^[a-zA-Z0-9_-]{3,}$/.test(list)) {
-        // Keep start video if present; useful for RD links and normal playlists with a start.
         return {
           kind: "playlist",
           id: list,
@@ -245,20 +461,16 @@
         };
       }
 
-      // Standard watch?v=
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
         return { kind: "video", id: v };
       }
 
-      // shorts
       let m = u.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{5,})/);
       if (m) return { kind: "video", id: m[1].slice(0, 11) };
 
-      // embed
       m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{5,})/);
       if (m) return { kind: "video", id: m[1].slice(0, 11) };
 
-      // Fallback: last path segment
       const tail = u.pathname.split("/").filter(Boolean).pop();
       if (tail && /^[a-zA-Z0-9_-]{5,}$/.test(tail)) {
         return { kind: "video", id: tail.slice(0, 11) };
@@ -285,7 +497,6 @@
 
       if (item.kind === "video") {
         const params = new URLSearchParams(baseParams);
-        // loop a single video only in this case
         params.set("loop", "1");
         params.set("playlist", item.id);
         return `https://www.youtube.com/embed/${item.id}?${params.toString()}`;
@@ -293,13 +504,9 @@
 
       if (item.kind === "playlist") {
         const params = new URLSearchParams(baseParams);
-        // Real playlist (including RD / radio / mixes).
-        // No single-video loop hack; let YT handle next item.
         params.set("listType", "playlist");
         params.set("list", item.id);
-        if (item.startVideoId) {
-          params.set("v", item.startVideoId);
-        }
+        if (item.startVideoId) params.set("v", item.startVideoId);
         return `https://www.youtube.com/embed?${params.toString()}`;
       }
 
@@ -307,19 +514,23 @@
     }
 
     /***********************
-     * YouTube Iframe API for resume
+     * YouTube Iframe API + progress
      ***********************/
-    let ytApiReady = false;
-    const playerIntervals = new Map();
-
     function ensureYouTubeAPI() {
-      if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
+      if (window.YT && YT.Player) {
+        ytApiReady = true;
+        initPlayers();
+        return;
+      }
       if (document.getElementById("yt-iframe-api")) return;
       const tag = document.createElement("script");
       tag.id = "yt-iframe-api";
       tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
-      window.onYouTubeIframeAPIReady = () => { ytApiReady = true; initPlayers(); };
+      window.onYouTubeIframeAPIReady = () => {
+        ytApiReady = true;
+        initPlayers();
+      };
     }
 
     function clearPlayerIntervals() {
@@ -361,16 +572,17 @@
       });
     }
 
-    /***********************
-     * Grid helpers
-     ***********************/
     function saveTime(key, seconds) {
-      try { localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds))); } catch {}
+      try {
+        localStorage.setItem(POS_PREFIX + key, String(Math.floor(seconds)));
+      } catch {}
     }
+
     function loadTime(key) {
       const v = +localStorage.getItem(POS_PREFIX + key);
       return Number.isFinite(v) && v > 0 ? v : 0;
     }
+
     function resetProgress() {
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
@@ -379,6 +591,9 @@
       init();
     }
 
+    /***********************
+     * Grid helpers
+     ***********************/
     function getGridSettings() {
       const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
       const forced = !!document.getElementById("forceGrid").checked;
@@ -396,7 +611,7 @@
       container.className = "video-container";
 
       const ifr = document.createElement("iframe");
-      const iframeId = `playeryt_${item.kind}_${(item.id||"")}_${idx+1}`;
+      const iframeId = `playeryt_${item.kind}_${(item.id || "")}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
       ifr.id = iframeId;
       ifr.src = embedUrl(item);
       ifr.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; accelerometer; gyroscope; fullscreen";
@@ -440,11 +655,14 @@
             rowEl.appendChild(makeCell(list[i], i));
             i++;
           } else {
-            if (forced) rowEl.appendChild(makeEmptyCell(i));
-            i++;
+            if (forced) {
+              rowEl.appendChild(makeEmptyCell(i));
+              i++;
+            }
           }
         }
       }
+
       ensureYouTubeAPI();
       requestAnimationFrame(resizeGrid);
     }
@@ -464,7 +682,7 @@
       const { cols, rows } = getGridSettings();
       const spacing = isFS ? 2 : 6;
       const rect = wrapper.getBoundingClientRect();
-      const availW = Math.max(0, rect.width  - spacing * (cols + 1));
+      const availW = Math.max(0, rect.width - spacing * (cols + 1));
       const availH = Math.max(0, rect.height - spacing * (rows + 1));
       if (availW <= 0 || availH <= 0) return;
 
@@ -482,14 +700,14 @@
     }
 
     /***********************
-     * Search helpers
+     * Search helpers (optional)
      ***********************/
     function getApiKey() {
       const v = localStorage.getItem(KEY_STORE);
       return v || "";
     }
 
-    async function searchYouTubeEmbeddable(query, needed, randomize=false) {
+    async function searchYouTubeEmbeddable(query, needed, randomize = false) {
       const key = getApiKey();
       if (!key) throw new Error("Please provide a YouTube Data API key to use search.");
       const allowDup = document.getElementById("allowDuplicates").checked;
@@ -533,18 +751,20 @@
 
       let picked = results.slice(0);
       if (randomize) {
-        for (let i=picked.length-1;i>0;i--) {
-          const j=Math.floor(Math.random()*(i+1));
-          [picked[i],picked[j]]=[picked[j],picked[i]];
+        for (let i = picked.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [picked[i], picked[j]] = [picked[j], picked[i]];
         }
       }
+
       if (picked.length < needed && allowDup && picked.length > 0) {
         while (picked.length < needed) picked.push(picked[picked.length % results.length]);
       }
-      return picked.slice(0, needed).map(id => ({ kind:"video", id }));
+
+      return picked.slice(0, needed).map(id => ({ kind: "video", id }));
     }
 
-    async function doSearchFill(randomize=false) {
+    async function doSearchFill(randomize = false) {
       const q = (document.getElementById("searchInput").value || "").trim();
       const settings = getGridSettings();
       const total = settings.forced ? settings.slots : settings.cols * settings.cols;
@@ -558,7 +778,7 @@
         return;
       }
 
-      status.textContent = `Searching YouTube for “${q}”… (need ${total} embeddable video${total===1?'':'s'})`;
+      status.textContent = `Searching YouTube for “${q}”… (need ${total} embeddable video${total === 1 ? "" : "s"})`;
       try {
         const items = await searchYouTubeEmbeddable(q, total, randomize);
         if (!items.length) {
@@ -569,7 +789,7 @@
         }
         const missing = Math.max(0, total - items.length);
         status.textContent = missing
-          ? `Found ${items.length}/${total} video(s) for “${q}”).`
+          ? `Found ${items.length}/${total} video(s) for “${q}”.`
           : `Loaded ${items.length} videos for “${q}”.`;
         buildTable(items, settings);
         updateLoadedCounts(items);
@@ -581,29 +801,16 @@
       }
     }
 
-    document.getElementById("searchFillBtn").addEventListener("click", () => doSearchFill(false));
-    document.getElementById("randomFillBtn").addEventListener("click", () => doSearchFill(true));
-
     /***********************
      * Playlist expansion
      ***********************/
-    function getExpandPref() { return localStorage.getItem(EXPAND_STORE) === "1"; }
-    function setExpandPref(v) { localStorage.setItem(EXPAND_STORE, v ? "1" : "0"); }
-    let expandPlaylists = getExpandPref();
-
-    const expandBtn = document.getElementById("expandPlaylistsBtn");
-    function renderExpandBtn() {
-      expandBtn.classList.toggle("toggle-on", expandPlaylists);
-      expandBtn.textContent = expandPlaylists ? "Playlists: ALL videos" : "Playlists: ONE item";
+    function getExpandPref() {
+      return localStorage.getItem(EXPAND_STORE) === "1";
     }
-    expandBtn.addEventListener("click", () => {
-      expandPlaylists = !expandPlaylists;
-      setExpandPref(expandPlaylists);
-      renderExpandBtn();
-      loadSelectedIntoGrid(getSelectedIndex());
-      updateFullscreenQr();
-    });
-    renderExpandBtn();
+    function setExpandPref(v) {
+      localStorage.setItem(EXPAND_STORE, v ? "1" : "0");
+    }
+    let expandPlaylists = getExpandPref();
 
     async function fetchPlaylistVideos(playlistId, maxTotal = MAX_ITEMS) {
       const key = getApiKey();
@@ -641,10 +848,14 @@
 
       const seen = new Set();
       const push = (arr, it) => {
-        if (allowDup) { arr.push(it); return true; }
+        if (allowDup) {
+          arr.push(it); return true;
+        }
         const k = `video:${it.id}`;
         if (seen.has(k)) return false;
-        seen.add(k); arr.push(it); return true;
+        seen.add(k);
+        arr.push(it);
+        return true;
       };
 
       if (!allowDup) {
@@ -657,11 +868,11 @@
         if (out.length >= MAX_ITEMS) break;
         if (it.kind === "playlist") {
           try {
-            status.textContent = `Expanding playlist ${playlistsExpanded+1}…`;
+            status.textContent = `Expanding playlist ${playlistsExpanded + 1}…`;
             const vids = await fetchPlaylistVideos(it.id, MAX_ITEMS);
             for (const v of vids) {
               if (out.length >= MAX_ITEMS) break;
-              push(out, { kind:"video", id:v });
+              push(out, { kind: "video", id: v });
             }
             playlistsExpanded++;
           } catch (e) {
@@ -674,37 +885,38 @@
           push(out, it);
         }
       }
-      status.textContent = `Expanded ${playlistsExpanded} playlist${playlistsExpanded===1?"":"s"} into videos.`;
+      status.textContent = `Expanded ${playlistsExpanded} playlist${playlistsExpanded === 1 ? "" : "s"} into videos.`;
       return out.slice(0, MAX_ITEMS);
     }
 
     /***********************
      * Source selection + previews
      ***********************/
-    const cache = new Map();
-
     function getSelectedIndex() {
       let v = +localStorage.getItem(STORAGE_SELECTED);
-      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 0;
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5; // default to Telegram
       return v;
     }
+
     function setSelectedIndex(i) {
-      const clamped = Math.max(0, Math.min(SOURCES.length - 1, i|0));
+      const clamped = Math.max(0, Math.min(SOURCES.length - 1, i | 0));
       localStorage.setItem(STORAGE_SELECTED, String(clamped));
     }
 
     function itemCounts(items) {
       return items.reduce((acc, it) => {
-        acc[it.kind] = (acc[it.kind]||0)+1;
+        acc[it.kind] = (acc[it.kind] || 0) + 1;
         return acc;
       }, {});
     }
 
-    function ytThumbUrl(id) { return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; }
+    function ytThumbUrl(id) {
+      return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+    }
 
     async function loadAllSources() {
       const previewStatus = document.getElementById("previewStatus");
-      previewStatus.textContent = "Loading sheets…";
+      previewStatus.textContent = "Loading sources…";
       const tasks = SOURCES.map(async (src) => {
         const items = await fetchItems(src.url);
         cache.set(src.label, {
@@ -714,7 +926,7 @@
       });
       await Promise.all(tasks);
       buildSourcesPreview();
-      previewStatus.textContent = `Loaded ${SOURCES.length} sheet(s).`;
+      previewStatus.textContent = `Loaded ${SOURCES.length} source(s).`;
     }
 
     function computeOptimalGrid(n) {
@@ -750,12 +962,14 @@
         head.className = "source-head";
         const title = document.createElement("div");
         title.className = "source-title";
-        title.textContent = src.label + " (Auto)";
+        title.textContent = src.label + (src.label === TELEGRAM_LABEL ? " (Live)" : " (Auto)");
         const countsEl = document.createElement("div");
         countsEl.className = "counts";
         const v = data?.counts?.video || 0;
         const p = data?.counts?.playlist || 0;
-        countsEl.textContent = `${v} video${v===1?"":"s"}${p?` · ${p} playlist${p===1?"":"s"}`:""}`;
+        countsEl.textContent =
+          `${v} video${v === 1 ? "" : "s"}` +
+          (p ? ` · ${p} playlist${p === 1 ? "" : "s"}` : "");
         head.appendChild(title);
         head.appendChild(countsEl);
 
@@ -768,7 +982,9 @@
 
         const items = (data?.items || []);
         const { cols, rows, slots } = computeOptimalGrid(items.length || 1);
-        const TILE_W = 160, GAP = 6, TILE_H = Math.round(TILE_W * 9/16);
+        const TILE_W = 160;
+        const GAP = 6;
+        const TILE_H = Math.round(TILE_W * 9 / 16);
         const naturalW = cols * TILE_W + (cols - 1) * GAP;
         const naturalH = rows * TILE_H + (rows - 1) * GAP;
         grid.style.gridTemplateColumns = `repeat(${cols}, ${TILE_W}px)`;
@@ -813,7 +1029,8 @@
 
         card.addEventListener("click", () => {
           setSelectedIndex(idx);
-          Array.from(document.querySelectorAll(".source-card")).forEach(c => c.classList.remove("active-source"));
+          Array.from(document.querySelectorAll(".source-card"))
+            .forEach(c => c.classList.remove("active-source"));
           card.classList.add("active-source");
           loadSelectedIntoGrid(idx);
           updateFullscreenQr();
@@ -842,24 +1059,30 @@
       loadedCountEl.textContent = "";
 
       try {
+        const label = SOURCES[idx]?.label || "Source";
         let items = getCurrentItemsForIndex(idx).slice(0, MAX_ITEMS);
 
-        if (expandPlaylists) items = await expandPlaylistsIfEnabled(items, true);
+        if (expandPlaylists && label !== TELEGRAM_LABEL) {
+          items = await expandPlaylistsIfEnabled(items, true);
+        }
 
-        const savedOrder = loadSavedLayout();
-        if (Array.isArray(savedOrder) && savedOrder.length) {
-          const byKey = new Map(items.map(it => [getItemKey(it), it]));
-          const picked = [];
-          const seen = new Set();
-          for (const k of savedOrder) {
-            const it = byKey.get(k);
-            if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
+        // Only apply saved layout to non-live sources
+        if (label !== TELEGRAM_LABEL) {
+          const savedOrder = loadSavedLayout();
+          if (Array.isArray(savedOrder) && savedOrder.length) {
+            const byKey = new Map(items.map(it => [getItemKey(it), it]));
+            const picked = [];
+            const seen = new Set();
+            for (const k of savedOrder) {
+              const it = byKey.get(k);
+              if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
+            }
+            for (const it of items) {
+              const k = getItemKey(it);
+              if (!seen.has(k)) { picked.push(it); seen.add(k); }
+            }
+            items = picked;
           }
-          for (const it of items) {
-            const k = getItemKey(it);
-            if (!seen.has(k)) { picked.push(it); seen.add(k); }
-          }
-          items = picked;
         }
 
         const forceGridEl = document.getElementById("forceGrid");
@@ -870,19 +1093,37 @@
         }
 
         const settings = getGridSettings();
-        const display = settings.forced ? items.slice(0, settings.slots) : items;
-        const missing = settings.forced ? Math.max(0, settings.slots - display.length) : 0;
+        let display;
 
-        const label = SOURCES[idx]?.label || "Sheet";
+        if (label === TELEGRAM_LABEL) {
+          // Initial Telegram build: newest first, limited
+          const all = items.slice(-TELEGRAM_MAX_VIDEOS);
+          const newestFirst = all.slice().reverse();
+          const limit = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
+          display = newestFirst.slice(0, limit);
+          buildTable(display, settings);
+          telegramDisplayKeys = display.map(getItemKey);
+        } else {
+          display = settings.forced ? items.slice(0, settings.slots) : items;
+          buildTable(display, settings);
+        }
+
+        const missing = settings.forced
+          ? Math.max(0, settings.slots - display.length)
+          : 0;
+
         loadedCountEl.textContent =
-          `Loaded embeds: ${display.length} from ${label}${expandPlaylists ? " (playlists expanded)" : ""}`;
+          `Loaded embeds: ${display.length} from ${label}` +
+          (expandPlaylists && label !== TELEGRAM_LABEL ? " (playlists expanded)" : "");
 
         const summary = settings.forced
           ? `Loaded ${display.length}/${settings.slots} slot(s) from ${label}.`
-          : `Loaded ${display.length} item${display.length===1?"":"s"} from ${label}. (Auto grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
+          : `Loaded ${display.length} item${display.length === 1 ? "" : "s"} from ${label}. (Auto grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
 
-        status.textContent = summary + (missing ? ` (showing ${missing} empty slot${missing===1?"":"s"})` : "");
-        buildTable(display, settings);
+        status.textContent = summary + (missing
+          ? ` (showing ${missing} empty slot${missing === 1 ? "" : "s"})`
+          : "");
+
         updateFullscreenQr();
       } catch (e) {
         status.textContent = "";
@@ -897,15 +1138,21 @@
       const order = Array.from(document.querySelectorAll("#tbody .cell iframe"))
         .map(ifr => ifr?.dataset?.progressKey)
         .filter(Boolean);
-      try { localStorage.setItem(layoutKey(), JSON.stringify(order)); } catch {}
+      try {
+        localStorage.setItem(layoutKey(), JSON.stringify(order));
+      } catch {}
       document.getElementById("status").textContent = "Layout saved.";
     }
+
     function loadSavedLayout() {
       try {
         const raw = localStorage.getItem(layoutKey());
         return raw ? JSON.parse(raw) : null;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     }
+
     function clearSavedLayout() {
       localStorage.removeItem(layoutKey());
     }
@@ -921,6 +1168,53 @@
     let swapMode = false;
     let firstCell = null;
     const swapBtn = document.getElementById("swapModeBtn");
+
+    function clearSwapHighlights() {
+      document
+        .querySelectorAll(".cell")
+        .forEach(c => c.classList.remove("swap-highlight", "swap-pending"));
+    }
+
+    function onCellClick(e) {
+      if (!swapMode) return;
+      const cell = e.currentTarget;
+      if (!firstCell) {
+        firstCell = cell;
+        clearSwapHighlights();
+        cell.classList.add("swap-pending");
+        return;
+      }
+      if (cell === firstCell) {
+        firstCell.classList.remove("swap-pending");
+        firstCell = null;
+        return;
+      }
+      swapCellContents(firstCell, cell);
+      firstCell.classList.remove("swap-pending");
+      cell.classList.add("swap-highlight");
+      setTimeout(() => {
+        cell.classList.remove("swap-highlight");
+      }, 400);
+      firstCell = null;
+      requestAnimationFrame(() => {
+        ensureYouTubeAPI();
+        resizeGrid();
+      });
+      saveCurrentLayout();
+    }
+
+    function swapCellContents(cellA, cellB) {
+      const tempA = document.createElement("div");
+      while (cellA.firstChild) tempA.appendChild(cellA.firstChild);
+      const tempB = document.createElement("div");
+      while (cellB.firstChild) tempB.appendChild(cellB.firstChild);
+      while (tempB.firstChild) cellA.appendChild(tempB.firstChild);
+      while (tempA.firstChild) cellB.appendChild(tempA.firstChild);
+      const hasIframeA = !!cellA.querySelector("iframe");
+      const hasIframeB = !!cellB.querySelector("iframe");
+      cellA.classList.toggle("empty", !hasIframeA);
+      cellB.classList.toggle("empty", !hasIframeB);
+    }
 
     swapBtn.addEventListener("click", () => {
       swapMode = !swapMode;
@@ -942,46 +1236,6 @@
       }
     });
 
-    function clearSwapHighlights() {
-      document.querySelectorAll(".cell").forEach(c => c.classList.remove("swap-highlight","swap-pending"));
-    }
-
-    function onCellClick(e) {
-      if (!swapMode) return;
-      const cell = e.currentTarget;
-      if (!firstCell) {
-        firstCell = cell;
-        clearSwapHighlights();
-        cell.classList.add("swap-pending");
-        return;
-      }
-      if (cell === firstCell) {
-        firstCell.classList.remove("swap-pending");
-        firstCell = null;
-        return;
-      }
-      swapCellContents(firstCell, cell);
-      firstCell.classList.remove("swap-pending");
-      cell.classList.add("swap-highlight");
-      setTimeout(() => { cell.classList.remove("swap-highlight"); }, 400);
-      firstCell = null;
-      requestAnimationFrame(() => { ensureYouTubeAPI(); resizeGrid(); });
-      saveCurrentLayout();
-    }
-
-    function swapCellContents(cellA, cellB) {
-      const tempA = document.createElement("div");
-      while (cellA.firstChild) tempA.appendChild(cellA.firstChild);
-      const tempB = document.createElement("div");
-      while (cellB.firstChild) tempB.appendChild(cellB.firstChild);
-      while (tempB.firstChild) cellA.appendChild(tempB.firstChild);
-      while (tempA.firstChild) cellB.appendChild(tempA.firstChild);
-      const hasIframeA = !!cellA.querySelector("iframe");
-      const hasIframeB = !!cellB.querySelector("iframe");
-      cellA.classList.toggle("empty", !hasIframeA);
-      cellB.classList.toggle("empty", !hasIframeB);
-    }
-
     /***********************
      * Fullscreen + QR overlay
      ***********************/
@@ -993,7 +1247,7 @@
         document.fullscreenElement === wrapper ||
         document.webkitFullscreenElement === wrapper;
       const selectedLabel = SOURCES[getSelectedIndex()]?.label || "";
-      const shouldShow = isFS && selectedLabel === "Telegram Chat";
+      const shouldShow = isFS && selectedLabel === TELEGRAM_LABEL;
       overlay.classList.toggle("show", !!shouldShow);
     }
 
@@ -1004,12 +1258,6 @@
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-
-    window.addEventListener("resize", () => {
-      buildSourcesPreview();
-      resizeGrid();
-      updateFullscreenQr();
-    });
 
     /***********************
      * Aspect mode
@@ -1039,6 +1287,13 @@
     /***********************
      * Controls wiring
      ***********************/
+    document.getElementById("searchFillBtn").addEventListener("click", () => {
+      doSearchFill(false);
+    });
+    document.getElementById("randomFillBtn").addEventListener("click", () => {
+      doSearchFill(true);
+    });
+
     document.getElementById("reload").addEventListener("click", () => {
       loadSelectedIntoGrid(getSelectedIndex());
       updateFullscreenQr();
@@ -1056,6 +1311,7 @@
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
 
     document.getElementById("saveLayoutBtn").addEventListener("click", saveCurrentLayout);
+
     document.getElementById("clearLayoutBtn").addEventListener("click", () => {
       clearSavedLayout();
       document.getElementById("status").textContent = "Saved layout cleared.";
@@ -1074,27 +1330,207 @@
       document.getElementById("keyStatus").textContent = "API key saved locally.";
     });
 
+    window.addEventListener("resize", () => {
+      buildSourcesPreview();
+      resizeGrid();
+      updateFullscreenQr();
+    });
+
     /***********************
-     * Boot
+     * Fetch items (sheets + youtube_links)
      ***********************/
     async function fetchItems(url) {
       const res = await fetch(url, { credentials: "omit", cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
+      if (!res.ok) {
+        if (url.endsWith("youtube_links.txt")) return [];
+        throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
+      }
+
       const text = await res.text();
-      if (/ServiceLogin|accounts\.google\.com/i.test(text)) throw new Error("Sheet must be public.");
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const values = lines.map(l =>
-        (l.includes(",") || l.includes("\t")) ? l.split(/,|\t/)[0].trim() : l
-      );
+      if (/ServiceLogin|accounts\.google\.com/i.test(text)) {
+        throw new Error("Sheet must be public.");
+      }
+
+      const lines = text
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean);
+
+      const isSheet = url.includes("spreadsheets") || url.includes("googleusercontent.com");
+      const values = isSheet
+        ? lines.map(l =>
+            (l.includes(",") || l.includes("\t"))
+              ? l.split(/,|\t/)[0].trim()
+              : l
+          )
+        : lines;
+
       if (values.length && !parseYouTube(values[0])) values.shift();
-      return values.map(parseYouTube).filter(Boolean).slice(0, MAX_ITEMS);
+
+      return values
+        .map(parseYouTube)
+        .filter(Boolean)
+        .slice(0, MAX_ITEMS);
     }
 
+    /***********************
+     * Telegram incremental grid update
+     ***********************/
+    function prependTelegramItemToGrid(item, settings) {
+      const tbody = document.getElementById("tbody");
+      const { cols } = settings;
+      const maxCells = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
+
+      // If no rows yet, just build normally
+      if (!tbody.firstElementChild) {
+        buildTable([item], settings);
+        telegramDisplayKeys = [getItemKey(item)];
+        initPlayers();
+        return;
+      }
+
+      const newTd = makeCell(item, 0);
+      let row = tbody.firstElementChild;
+      row.insertBefore(newTd, row.firstElementChild);
+
+      // Cascade overflow across rows
+      let currentRow = row;
+      while (currentRow) {
+        const cells = currentRow.children;
+        if (cells.length <= cols) {
+          currentRow = currentRow.nextElementSibling;
+          continue;
+        }
+        const overflowTd = cells[cells.length - 1];
+        let nextRow = currentRow.nextElementSibling;
+        if (!nextRow) {
+          nextRow = document.createElement("tr");
+          tbody.appendChild(nextRow);
+        }
+        nextRow.insertBefore(overflowTd, nextRow.firstElementChild);
+        currentRow = nextRow;
+      }
+
+      // Enforce max cells: drop from the very end
+      const allTds = tbody.querySelectorAll("td");
+      if (allTds.length > maxCells) {
+        const extra = allTds.length - maxCells;
+        for (let i = 0; i < extra; i++) {
+          const lastRow = tbody.lastElementChild;
+          if (!lastRow) break;
+          const lastCell = lastRow.lastElementChild;
+          if (lastCell) lastRow.removeChild(lastCell);
+          if (!lastRow.children.length) tbody.removeChild(lastRow);
+        }
+      }
+
+      // Update key list (newest-first)
+      const key = getItemKey(item);
+      telegramDisplayKeys.unshift(key);
+      if (telegramDisplayKeys.length > maxCells) {
+        telegramDisplayKeys.length = maxCells;
+      }
+
+      // Bind YT player for the new iframe only
+      ensureYouTubeAPI();
+      if (ytApiReady) initPlayers();
+
+      requestAnimationFrame(resizeGrid);
+    }
+
+    async function pollTelegramLinks() {
+      const telegramSrc = SOURCES.find(s => s.label === TELEGRAM_LABEL);
+      if (!telegramSrc) return;
+
+      try {
+        const res = await fetch(telegramSrc.url + "?_=" + Date.now(), {
+          cache: "no-store",
+          credentials: "omit"
+        });
+        if (!res.ok) {
+          console.warn("Telegram file fetch failed", res.status);
+          return;
+        }
+
+        const text = await res.text();
+        const lines = text
+          .split(/\r?\n/)
+          .map(l => l.trim())
+          .filter(Boolean);
+
+        // First observation: just sync counts
+        if (telegramLastLineCount === 0) {
+          telegramLastLineCount = lines.length;
+          return;
+        }
+
+        if (lines.length <= telegramLastLineCount) return;
+
+        const newLines = lines.slice(telegramLastLineCount);
+        telegramLastLineCount = lines.length;
+
+        const existing = (cache.get(TELEGRAM_LABEL)?.items || []);
+        const newItems = newLines.map(parseYouTube).filter(Boolean);
+        if (!newItems.length) return;
+
+        let updated = existing.concat(newItems);
+        if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
+          // keep some history but not infinite
+          updated = updated.slice(-TELEGRAM_MAX_VIDEOS * 3);
+        }
+
+        cache.set(TELEGRAM_LABEL, {
+          items: updated,
+          counts: itemCounts(updated)
+        });
+
+        const selectedLabel = SOURCES[getSelectedIndex()]?.label;
+        if (selectedLabel === TELEGRAM_LABEL) {
+          const settings = getGridSettings();
+          // Add each new item incrementally: each becomes the new "newest"
+          for (const it of newItems) {
+            prependTelegramItemToGrid(it, settings);
+          }
+          const shownCount = document.querySelectorAll("#tbody td iframe").length;
+          document.getElementById("loadedCount").textContent =
+            `Loaded embeds: ${shownCount} from Telegram Chat (live)`;
+          document.getElementById("status").textContent =
+            `Live from Telegram: ${shownCount} video${shownCount === 1 ? "" : "s"} (rolling newest-first)`;
+        }
+
+        buildSourcesPreview();
+      } catch (e) {
+        console.error("Telegram live poll error:", e);
+      }
+    }
+
+    function startTelegramLive() {
+      if (telegramLiveTimer) clearInterval(telegramLiveTimer);
+
+      const telegramSrc = SOURCES.find(s => s.label === TELEGRAM_LABEL);
+      if (!telegramSrc) return;
+
+      const cached = cache.get(TELEGRAM_LABEL);
+      if (cached && Array.isArray(cached.items)) {
+        // we don't know exact line count vs items (due to filtering), but
+        // we can approximate by file length on first poll; initial poll handler handles 0→len
+        telegramLastLineCount = 0;
+      } else {
+        telegramLastLineCount = 0;
+      }
+
+      telegramLiveTimer = setInterval(pollTelegramLinks, TELEGRAM_POLL_INTERVAL);
+    }
+
+    /***********************
+     * Boot
+     ***********************/
     async function init() {
       const k = localStorage.getItem(KEY_STORE) || "";
       const keyInput = document.getElementById("ytApiKey");
       keyInput.value = k ? "••••••••••••" : "";
-      document.getElementById("keyStatus").textContent = k ? "API key saved locally." : "No API key saved yet.";
+      document.getElementById("keyStatus").textContent =
+        k ? "API key saved locally." : "No API key saved yet.";
 
       try {
         await loadAllSources();
@@ -1108,11 +1544,29 @@
       setSelectedIndex(selected);
       await loadSelectedIntoGrid(selected);
 
+      // Playlist toggle initial render
+      const expandBtn = document.getElementById("expandPlaylistsBtn");
+      function renderExpandBtn() {
+        expandBtn.classList.toggle("toggle-on", expandPlaylists);
+        expandBtn.textContent = expandPlaylists ? "Playlists: ALL videos" : "Playlists: ONE item";
+      }
+      expandBtn.onclick = () => {
+        expandPlaylists = !expandPlaylists;
+        setExpandPref(expandPlaylists);
+        renderExpandBtn();
+        loadSelectedIntoGrid(getSelectedIndex());
+        updateFullscreenQr();
+      };
+      renderExpandBtn();
+
       renderAspectBtn();
       requestAnimationFrame(() => {
         resizeGrid();
         updateFullscreenQr();
       });
+
+      // Start live Telegram updates
+      startTelegramLive();
     }
 
     init();
