@@ -45,7 +45,7 @@
   }
   #wall {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, 1fr); /* default 5 columns */
     grid-auto-rows: 1fr;
     gap: 6px;
     width: 100%;
@@ -86,12 +86,12 @@
     display: none;
   }
 
-  /* smaller QR code, lower right */
+  /* smaller QR code in lower right */
   #qrOverlay {
     position: fixed;
-    bottom: 16px;      /* was top */
+    bottom: 16px;
     right: 16px;
-    width: 80px;       /* smaller size */
+    width: 80px;
     height: auto;
     opacity: 0.9;
     z-index: 9999;
@@ -126,61 +126,132 @@
 <div id="wall"></div>
 
 <script>
-const FILE_URL = "youtube_links.txt";
-const POLL_INTERVAL = 3000;
-let MAX_VIDEOS = 25;
+const FILE_URL = "youtube_links.txt";   // Telethon output file
+const POLL_INTERVAL = 3000;             // ms between checks
+let MAX_VIDEOS = 25;                    // default, can change in UI
 
 const wall = document.getElementById("wall");
 let known = new Set();
 
-function ytEmbed(id) {
+/**
+ * Build proper embed URL:
+ * - Single video: loops that video.
+ * - Playlist: auto plays through playlist & loops.
+ */
+function ytEmbed(item) {
+  if (item.kind === "playlist") {
+    const p = new URLSearchParams({
+      autoplay: 1,
+      mute: 1,
+      loop: 1,
+      listType: "playlist",
+      list: item.id,
+      rel: 0,
+      controls: 1,
+      playsinline: 1
+    });
+    return "https://www.youtube.com/embed?" + p.toString();
+  }
+
+  // default: single video, loop by using playlist param = same id
   const p = new URLSearchParams({
-    autoplay: 1, mute: 1, loop: 1,
-    playlist: id, rel: 0, controls: 1, playsinline: 1
+    autoplay: 1,
+    mute: 1,
+    loop: 1,
+    playlist: item.id,
+    rel: 0,
+    controls: 1,
+    playsinline: 1
   });
-  return `https://www.youtube.com/embed/${id}?${p.toString()}`;
+  return `https://www.youtube.com/embed/${item.id}?` + p.toString();
 }
 
-function parseId(line) {
-  line = line.trim();
+/**
+ * Parse a line into either:
+ * - { kind: "video", id: "VIDEO_ID" }
+ * - { kind: "playlist", id: "PLAYLIST_ID" }
+ */
+function parseLine(line) {
+  line = (line || "").trim();
   if (!line) return null;
-  if (/^[\w-]{11}$/.test(line)) return line;
-  const m = line.match(/[?&]v=([\w-]{11})/);
-  if (m) return m[1];
-  const s = line.match(/youtu\.be\/([\w-]{11})/);
-  if (s) return s[1];
+
+  // raw video id
+  if (/^[\w-]{11}$/.test(line)) {
+    return { kind: "video", id: line };
+  }
+
+  // ensure URL-y
+  if (!/^https?:\/\//i.test(line)) {
+    line = "https://" + line;
+  }
+
+  try {
+    const u = new URL(line);
+    const host = u.hostname.replace(/^www\./, "");
+
+    const list = u.searchParams.get("list");
+    const v = u.searchParams.get("v");
+
+    // playlist URL
+    if (list && /^[\w-]+$/.test(list)) {
+      return { kind: "playlist", id: list };
+    }
+
+    // standard watch URL with v=
+    if (v && /^[\w-]{11}$/.test(v)) {
+      return { kind: "video", id: v };
+    }
+
+    // youtu.be short links
+    if (host === "youtu.be") {
+      const m = u.pathname.match(/\/([\w-]{11})$/);
+      if (m) return { kind: "video", id: m[1] };
+    }
+  } catch (e) {
+    // fall through to null
+  }
+
   return null;
 }
 
 async function poll() {
   try {
-    const res = await fetch(FILE_URL + "?_=" + Date.now(), {cache:"no-store"});
+    const res = await fetch(FILE_URL + "?_=" + Date.now(), { cache: "no-store" });
     if (!res.ok) return;
+
     const text = await res.text();
-    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
     for (const line of lines) {
-      const id = parseId(line);
-      if (!id || known.has(id)) continue;
-      known.add(id);
-      addVideo(id);
+      const item = parseLine(line);
+      if (!item) continue;
+
+      const key = item.kind + ":" + item.id;
+      if (known.has(key)) continue;
+      known.add(key);
+
+      addVideo(item);
       maintainLimit();
     }
-  } catch(e) {
+  } catch (e) {
     console.error("poll error", e);
   } finally {
     setTimeout(poll, POLL_INTERVAL);
   }
 }
 
-function addVideo(id) {
+function addVideo(item) {
   const div = document.createElement("div");
   div.className = "tile";
+
   const ifr = document.createElement("iframe");
-  ifr.src = ytEmbed(id);
+  ifr.src = ytEmbed(item);
   ifr.allow = "autoplay; encrypted-media; picture-in-picture";
+
   const ts = document.createElement("div");
   ts.className = "timestamp";
   ts.textContent = new Date().toLocaleTimeString();
+
   div.append(ifr, ts);
   wall.insertBefore(div, wall.firstChild);
 }
