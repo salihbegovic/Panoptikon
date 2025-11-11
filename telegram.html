@@ -45,7 +45,7 @@
   }
   #wall {
     display: grid;
-    grid-template-columns: repeat(5, 1fr); /* default 5 columns */
+    grid-template-columns: repeat(5, 1fr);
     grid-auto-rows: 1fr;
     gap: 6px;
     width: 100%;
@@ -86,11 +86,12 @@
     display: none;
   }
 
+  /* smaller QR code, lower right */
   #qrOverlay {
     position: fixed;
-    top: 16px;
+    bottom: 16px;      /* was top */
     right: 16px;
-    width: 160px;
+    width: 80px;       /* smaller size */
     height: auto;
     opacity: 0.9;
     z-index: 9999;
@@ -125,9 +126,9 @@
 <div id="wall"></div>
 
 <script>
-const FILE_URL = "youtube_links.txt";   // Telethon output file
-const POLL_INTERVAL = 3000;             // ms between checks
-let MAX_VIDEOS = 25;                    // default, can change in UI
+const FILE_URL = "youtube_links.txt";
+const POLL_INTERVAL = 3000;
+let MAX_VIDEOS = 25;
 
 const wall = document.getElementById("wall");
 let known = new Set();
@@ -214,4 +215,3 @@ poll();
 </script>
 </body>
 </html>
-
