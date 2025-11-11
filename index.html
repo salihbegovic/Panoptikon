@@ -23,6 +23,13 @@
       align-items: center;
       gap: 10px;
     }
+    .badge {
+      font-size: 11px;
+      opacity: .8;
+      padding: 2px 6px;
+      border: 1px solid #2a303d;
+      border-radius: 999px;
+    }
     .hint {
       color: #a7b0bb;
       font-size: 14px;
@@ -61,13 +68,6 @@
       opacity: .6;
       cursor: not-allowed;
     }
-    .badge {
-      font-size: 11px;
-      opacity: .8;
-      padding: 2px 6px;
-      border: 1px solid #2a303d;
-      border-radius: 999px;
-    }
     .toggle-on {
       background: #0b3a2b;
       border-color: #134e4a;
@@ -78,9 +78,10 @@
       z-index: 10;
     }
 
+    /* QR overlay bottom-right in fullscreen (Telegram only) */
     #qrCodeOverlay {
       position: fixed;
-      top: 16px;
+      bottom: 16px;
       right: 16px;
       width: 160px;
       height: auto;
@@ -324,8 +325,8 @@
     <div id="sourcesPreview" class="sources"></div>
 
     <div class="controls">
-      <label>Columns: <input id="cols" type="number" min="1" max="12" value="2"></label>
-      <label>Rows: <input id="rows" type="number" min="1" max="12" value="2"></label>
+      <label>Columns: <input id="cols" type="number" min="1" max="12" value="5"></label>
+      <label>Rows: <input id="rows" type="number" min="1" max="12" value="5"></label>
       <label><input type="checkbox" id="forceGrid"> Force grid size</label>
       <label><input type="checkbox" id="allowDuplicates" checked> Allow Duplicates</label>
       <button id="reload">Rebuild Grid</button>
@@ -392,12 +393,10 @@
       }
     ];
 
-    // Telegram live behaviour config
     const TELEGRAM_LABEL = "Telegram Chat";
-    const TELEGRAM_MAX_VIDEOS = 40;       // how many recent videos to keep visible
-    const TELEGRAM_POLL_INTERVAL = 3000;  // ms between checks of youtube_links.txt
+    const TELEGRAM_MAX_VIDEOS = 25;
+    const TELEGRAM_POLL_INTERVAL = 3000;
 
-    // Local storage keys etc
     const STORAGE_SELECTED    = "panoptikon_selected_index";
     const POS_PREFIX          = "panoptikon_time_";
     const KEY_STORE           = "panoptikon_yt_api_key";
@@ -412,10 +411,15 @@
     let ytApiReady = false;
     const playerIntervals = new Map();
     const cache = new Map();
-
-    // For Telegram incremental updates: track current displayed keys (newest-first)
     let telegramDisplayKeys = [];
 
+    let expandPlaylists = getExpandPref();
+    let swapMode = false;
+    let firstCell = null;
+
+    /***********************
+     * Utility
+     ***********************/
     function layoutKey() {
       const label = SOURCES[getSelectedIndex()]?.label || "Sheet";
       return `${LAYOUT_STORE_PREFIX}${label}:${expandPlaylists ? "expanded" : "one"}`;
@@ -425,9 +429,6 @@
       return `${it.kind}:${it.id || ""}:${it.startVideoId || ""}`;
     }
 
-    /***********************
-     * YouTube parsing
-     ***********************/
     function parseYouTube(x) {
       if (!x) return null;
       x = ("" + x).trim();
@@ -479,9 +480,6 @@
       return null;
     }
 
-    /***********************
-     * Embed URL builder
-     ***********************/
     function embedUrl(item) {
       const baseParams = {
         autoplay: "1",
@@ -514,7 +512,7 @@
     }
 
     /***********************
-     * YouTube Iframe API + progress
+     * YouTube API + progress
      ***********************/
     function ensureYouTubeAPI() {
       if (window.YT && YT.Player) {
@@ -592,12 +590,12 @@
     }
 
     /***********************
-     * Grid helpers
+     * Grid
      ***********************/
     function getGridSettings() {
-      const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 1));
+      const cols = Math.max(1, Math.min(12, +document.getElementById("cols").value || 5));
       const forced = !!document.getElementById("forceGrid").checked;
-      const rows = Math.max(1, Math.min(12, +document.getElementById("rows").value || cols));
+      const rows = Math.max(1, Math.min(12, +document.getElementById("rows").value || (forced ? cols : 5)));
       return { cols, rows, forced, slots: cols * rows };
     }
 
@@ -654,11 +652,9 @@
           if (i < list.length) {
             rowEl.appendChild(makeCell(list[i], i));
             i++;
-          } else {
-            if (forced) {
-              rowEl.appendChild(makeEmptyCell(i));
-              i++;
-            }
+          } else if (forced) {
+            rowEl.appendChild(makeEmptyCell(i));
+            i++;
           }
         }
       }
@@ -700,20 +696,19 @@
     }
 
     /***********************
-     * Search helpers (optional)
+     * Search
      ***********************/
     function getApiKey() {
-      const v = localStorage.getItem(KEY_STORE);
-      return v || "";
+      return localStorage.getItem(KEY_STORE) || "";
     }
 
     async function searchYouTubeEmbeddable(query, needed, randomize = false) {
       const key = getApiKey();
       if (!key) throw new Error("Please provide a YouTube Data API key to use search.");
       const allowDup = document.getElementById("allowDuplicates").checked;
-
       const results = [];
       let pageToken = "";
+
       while (results.length < needed) {
         const batch = Math.min(50, needed - results.length);
         const url = new URL("https://www.googleapis.com/youtube/v3/search");
@@ -810,7 +805,6 @@
     function setExpandPref(v) {
       localStorage.setItem(EXPAND_STORE, v ? "1" : "0");
     }
-    let expandPlaylists = getExpandPref();
 
     async function fetchPlaylistVideos(playlistId, maxTotal = MAX_ITEMS) {
       const key = getApiKey();
@@ -894,7 +888,7 @@
      ***********************/
     function getSelectedIndex() {
       let v = +localStorage.getItem(STORAGE_SELECTED);
-      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5; // default to Telegram
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5; // default: Telegram
       return v;
     }
 
@@ -980,14 +974,30 @@
         const grid = document.createElement("div");
         grid.className = "preview-grid";
 
-        const items = (data?.items || []);
-        const { cols, rows, slots } = computeOptimalGrid(items.length || 1);
         const TILE_W = 160;
         const GAP = 6;
         const TILE_H = Math.round(TILE_W * 9 / 16);
+
+        let items = (data?.items || []);
+        let cols, rows, slots;
+
+        if (src.label === TELEGRAM_LABEL) {
+          const recent = items.slice(-25).reverse();
+          items = recent;
+          cols = 5;
+          rows = 5;
+          slots = 25;
+          grid.style.gridTemplateColumns = `repeat(5, ${TILE_W}px)`;
+        } else {
+          const opt = computeOptimalGrid(items.length || 1);
+          cols = opt.cols;
+          rows = opt.rows;
+          slots = opt.slots;
+          grid.style.gridTemplateColumns = `repeat(${cols}, ${TILE_W}px)`;
+        }
+
         const naturalW = cols * TILE_W + (cols - 1) * GAP;
         const naturalH = rows * TILE_H + (rows - 1) * GAP;
-        grid.style.gridTemplateColumns = `repeat(${cols}, ${TILE_W}px)`;
 
         for (let i = 0; i < slots; i++) {
           const t = document.createElement("div");
@@ -1027,28 +1037,14 @@
         card.appendChild(head);
         card.appendChild(shell);
 
-
-
-
-        if (src.label === TELEGRAM_LABEL) {
-          // For Telegram Chat: open telegram.html in the same tab
-          card.addEventListener("click", (e) => {
-            e.preventDefault();
-            window.location.href = "telegram.html";
-          });
-        } else {
-          card.addEventListener("click", () => {
-            setSelectedIndex(idx);
-            Array.from(document.querySelectorAll(".source-card"))
-              .forEach(c => c.classList.remove("active-source"));
-            card.classList.add("active-source");
-            loadSelectedIntoGrid(idx);
-            updateFullscreenQr();
-          });
-        }
-
-
-
+        card.addEventListener("click", () => {
+          setSelectedIndex(idx);
+          Array.from(document.querySelectorAll(".source-card"))
+            .forEach(c => c.classList.remove("active-source"));
+          card.classList.add("active-source");
+          loadSelectedIntoGrid(idx);
+          updateFullscreenQr();
+        });
 
         wrap.appendChild(card);
       });
@@ -1080,7 +1076,6 @@
           items = await expandPlaylistsIfEnabled(items, true);
         }
 
-        // Only apply saved layout to non-live sources
         if (label !== TELEGRAM_LABEL) {
           const savedOrder = loadSavedLayout();
           if (Array.isArray(savedOrder) && savedOrder.length) {
@@ -1100,17 +1095,20 @@
         }
 
         const forceGridEl = document.getElementById("forceGrid");
-        if (!forceGridEl.checked) {
+
+        // For non-Telegram: auto grid if not forced
+        if (label !== TELEGRAM_LABEL && !forceGridEl.checked) {
           const n = items.length || 1;
           const { cols, rows } = computeOptimalGrid(n);
           applyGridToInputs(cols, rows);
         }
+        // For Telegram: do NOT override cols/rows here.
+        // Default is 5x5 from HTML; user can change & use Force grid.
 
         const settings = getGridSettings();
         let display;
 
         if (label === TELEGRAM_LABEL) {
-          // Initial Telegram build: newest first, limited
           const all = items.slice(-TELEGRAM_MAX_VIDEOS);
           const newestFirst = all.slice().reverse();
           const limit = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
@@ -1132,7 +1130,7 @@
 
         const summary = settings.forced
           ? `Loaded ${display.length}/${settings.slots} slot(s) from ${label}.`
-          : `Loaded ${display.length} item${display.length === 1 ? "" : "s"} from ${label}. (Auto grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
+          : `Loaded ${display.length} item${display.length === 1 ? "" : "s"} from ${label}. (Grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
 
         status.textContent = summary + (missing
           ? ` (showing ${missing} empty slot${missing === 1 ? "" : "s"})`
@@ -1179,8 +1177,6 @@
     /***********************
      * Swap mode
      ***********************/
-    let swapMode = false;
-    let firstCell = null;
     const swapBtn = document.getElementById("swapModeBtn");
 
     function clearSwapHighlights() {
@@ -1351,7 +1347,7 @@
     });
 
     /***********************
-     * Fetch items (sheets + youtube_links)
+     * Fetch items
      ***********************/
     async function fetchItems(url) {
       const res = await fetch(url, { credentials: "omit", cache: "no-store" });
@@ -1388,14 +1384,13 @@
     }
 
     /***********************
-     * Telegram incremental grid update
+     * Telegram incremental updates
      ***********************/
     function prependTelegramItemToGrid(item, settings) {
       const tbody = document.getElementById("tbody");
       const { cols } = settings;
       const maxCells = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
 
-      // If no rows yet, just build normally
       if (!tbody.firstElementChild) {
         buildTable([item], settings);
         telegramDisplayKeys = [getItemKey(item)];
@@ -1404,11 +1399,11 @@
       }
 
       const newTd = makeCell(item, 0);
-      let row = tbody.firstElementChild;
-      row.insertBefore(newTd, row.firstElementChild);
+      const firstRow = tbody.firstElementChild;
+      firstRow.insertBefore(newTd, firstRow.firstElementChild);
 
-      // Cascade overflow across rows
-      let currentRow = row;
+      // Cascade overflow to the END of each row (keeps most existing cells stable)
+      let currentRow = firstRow;
       while (currentRow) {
         const cells = currentRow.children;
         if (cells.length <= cols) {
@@ -1421,11 +1416,11 @@
           nextRow = document.createElement("tr");
           tbody.appendChild(nextRow);
         }
-        nextRow.insertBefore(overflowTd, nextRow.firstElementChild);
+        nextRow.appendChild(overflowTd);
         currentRow = nextRow;
       }
 
-      // Enforce max cells: drop from the very end
+      // Enforce max cells
       const allTds = tbody.querySelectorAll("td");
       if (allTds.length > maxCells) {
         const extra = allTds.length - maxCells;
@@ -1438,14 +1433,12 @@
         }
       }
 
-      // Update key list (newest-first)
       const key = getItemKey(item);
       telegramDisplayKeys.unshift(key);
       if (telegramDisplayKeys.length > maxCells) {
         telegramDisplayKeys.length = maxCells;
       }
 
-      // Bind YT player for the new iframe only
       ensureYouTubeAPI();
       if (ytApiReady) initPlayers();
 
@@ -1472,7 +1465,6 @@
           .map(l => l.trim())
           .filter(Boolean);
 
-        // First observation: just sync counts
         if (telegramLastLineCount === 0) {
           telegramLastLineCount = lines.length;
           return;
@@ -1489,7 +1481,6 @@
 
         let updated = existing.concat(newItems);
         if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
-          // keep some history but not infinite
           updated = updated.slice(-TELEGRAM_MAX_VIDEOS * 3);
         }
 
@@ -1501,7 +1492,6 @@
         const selectedLabel = SOURCES[getSelectedIndex()]?.label;
         if (selectedLabel === TELEGRAM_LABEL) {
           const settings = getGridSettings();
-          // Add each new item incrementally: each becomes the new "newest"
           for (const it of newItems) {
             prependTelegramItemToGrid(it, settings);
           }
@@ -1520,19 +1510,9 @@
 
     function startTelegramLive() {
       if (telegramLiveTimer) clearInterval(telegramLiveTimer);
-
       const telegramSrc = SOURCES.find(s => s.label === TELEGRAM_LABEL);
       if (!telegramSrc) return;
-
-      const cached = cache.get(TELEGRAM_LABEL);
-      if (cached && Array.isArray(cached.items)) {
-        // we don't know exact line count vs items (due to filtering), but
-        // we can approximate by file length on first poll; initial poll handler handles 0→len
-        telegramLastLineCount = 0;
-      } else {
-        telegramLastLineCount = 0;
-      }
-
+      telegramLastLineCount = 0;
       telegramLiveTimer = setInterval(pollTelegramLinks, TELEGRAM_POLL_INTERVAL);
     }
 
@@ -1558,7 +1538,6 @@
       setSelectedIndex(selected);
       await loadSelectedIntoGrid(selected);
 
-      // Playlist toggle initial render
       const expandBtn = document.getElementById("expandPlaylistsBtn");
       function renderExpandBtn() {
         expandBtn.classList.toggle("toggle-on", expandPlaylists);
@@ -1579,7 +1558,6 @@
         updateFullscreenQr();
       });
 
-      // Start live Telegram updates
       startTelegramLive();
     }
 
@@ -1587,4 +1565,3 @@
   </script>
 </body>
 </html>
-
