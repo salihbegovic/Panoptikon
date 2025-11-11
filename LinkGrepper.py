@@ -15,9 +15,9 @@
 import re
 import os
 from urllib.parse import urlparse
-
 from telethon import TelegramClient, events
 from telethon.errors import rpcerrorlist
+
 
 # ---------- CONFIG ----------
 api_id = 31184561  # replace if needed
@@ -28,10 +28,19 @@ INVITE_LINK = "https://t.me/+VSZz8Z5oo_w2MDRk"  # your chat's invite link
 MESSAGE_LIMIT = None  # None = all available history
 # ----------------------------
 
-URL_REGEX = re.compile(
-    r'(https?://[^\s<>\]\)"]+)',
-    re.IGNORECASE
-)
+URL_REGEX = re.compile(r'(https?://[^\s<>\]\)"]+)', re.IGNORECASE)
+
+ALL_LINKS_FILE = "AllLinks.txt"
+YOUTUBE_LINKS_FILE = "youtube_links.txt"
+
+
+# ---------- HELPER FUNCTIONS ----------
+
+def ensure_file_exists(path):
+    """Create the file if it doesn't exist."""
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("")  # create empty file
 
 
 def is_youtube(url: str) -> bool:
@@ -46,53 +55,65 @@ def is_youtube(url: str) -> bool:
 def load_existing_links_from_files():
     """
     Make sure we don't re-add URLs across restarts.
+    Ensures files exist before reading.
     """
-    existing = set()
+    ensure_file_exists(ALL_LINKS_FILE)
+    ensure_file_exists(YOUTUBE_LINKS_FILE)
 
-    def read_file(path):
-        if os.path.exists(path):
+    existing = set()
+    for path in (ALL_LINKS_FILE, YOUTUBE_LINKS_FILE):
+        try:
             with open(path, "r", encoding="utf-8") as f:
                 for line in f:
                     url = line.strip()
                     if url:
                         existing.add(url)
-
-    read_file("AllLinks.txt")
-    read_file("youtube_links.txt")
+        except Exception as e:
+            print(f"Warning: could not read {path}: {e}")
     return existing
 
 
 def append_links(all_links, youtube_links):
+    """Append new links to the files, creating them if needed."""
+    ensure_file_exists(ALL_LINKS_FILE)
+    ensure_file_exists(YOUTUBE_LINKS_FILE)
+
     if all_links:
-        with open("AllLinks.txt", "a", encoding="utf-8") as f:
+        with open(ALL_LINKS_FILE, "a", encoding="utf-8") as f:
             for url in all_links:
                 f.write(url + "\n")
 
     if youtube_links:
-        with open("youtube_links.txt", "a", encoding="utf-8") as f:
+        with open(YOUTUBE_LINKS_FILE, "a", encoding="utf-8") as f:
             for url in youtube_links:
                 f.write(url + "\n")
 
 
+# ---------- MAIN ----------
+
 async def main():
+    # Ensure output files exist
+    ensure_file_exists(ALL_LINKS_FILE)
+    ensure_file_exists(YOUTUBE_LINKS_FILE)
+
     client = TelegramClient(session_name, api_id, api_hash)
     await client.start()
-    print("Client started.")
+    print("✅ Client started.")
 
     # Resolve the chat from invite link
     try:
         entity = await client.get_entity(INVITE_LINK)
     except rpcerrorlist.InviteHashExpiredError:
-        print("Invite link is expired or invalid.")
+        print("❌ Invite link is expired or invalid.")
         return
     except rpcerrorlist.InviteHashInvalidError:
-        print("Invite link is invalid.")
+        print("❌ Invite link is invalid.")
         return
     except Exception as e:
-        print(f"Could not resolve chat from invite link: {e}")
+        print(f"❌ Could not resolve chat from invite link: {e}")
         return
 
-    print(f"Fetching messages from: {getattr(entity, 'title', str(entity))}")
+    print(f"📨 Fetching messages from: {getattr(entity, 'title', str(entity))}")
 
     seen_links = load_existing_links_from_files()
 
@@ -117,10 +138,10 @@ async def main():
 
     append_links(new_links, new_yt_links)
 
-    print(f"Initial fetch done.")
-    print(f"New links this run: {len(new_links)}")
-    print(f"New YouTube links this run: {len(new_yt_links)}")
-    print(f"Total unique links known: {len(seen_links)}")
+    print("✅ Initial fetch done.")
+    print(f"🧩 New links this run: {len(new_links)}")
+    print(f"🎬 New YouTube links this run: {len(new_yt_links)}")
+    print(f"📦 Total unique links known: {len(seen_links)}")
 
     # ---------- LIVE LISTENER ----------
     async def handle_new_message(event):
@@ -146,13 +167,13 @@ async def main():
 
         append_links(added, added_yt)
 
-        print(f"[NEW MESSAGE] {len(added)} new link(s):")
+        print(f"\n[NEW MESSAGE] {len(added)} new link(s):")
         for u in added:
             print("   ", u)
 
     client.add_event_handler(handle_new_message, events.NewMessage(chats=entity))
 
-    print("Now listening for new messages in that chat...")
+    print("📡 Now listening for new messages in that chat...")
     await client.run_until_disconnected()
 
 

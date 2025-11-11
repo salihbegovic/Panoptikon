@@ -45,7 +45,7 @@
   }
   #wall {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); /* default 4 columns */
+    grid-template-columns: repeat(5, 1fr); /* default 5 columns */
     grid-auto-rows: 1fr;
     gap: 6px;
     width: 100%;
@@ -75,6 +75,7 @@
     padding: 2px 6px;
     border-radius: 4px;
   }
+
   :fullscreen #wall,
   :-webkit-full-screen #wall {
     height: 100%;
@@ -84,6 +85,22 @@
   :-webkit-full-screen header {
     display: none;
   }
+
+  #qrOverlay {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 160px;
+    height: auto;
+    opacity: 0.9;
+    z-index: 9999;
+    display: none;
+    pointer-events: none;
+  }
+  :fullscreen #qrOverlay,
+  :-webkit-full-screen #qrOverlay {
+    display: block;
+  }
 </style>
 </head>
 <body>
@@ -92,23 +109,25 @@
   <div>
     <label style="margin-right:8px;">
       Columns:
-      <input id="cols" type="number" min="1" max="10" value="4" style="width:50px;">
+      <input id="cols" type="number" min="1" max="10" value="5" style="width:50px;">
     </label>
     <label style="margin-right:8px;">
       Max Videos:
-      <input id="maxVideos" type="number" min="1" max="200" value="40" style="width:60px;">
+      <input id="maxVideos" type="number" min="1" max="200" value="25" style="width:60px;">
     </label>
     <button id="applyGrid">Apply</button>
     <button id="fullscreenBtn">Fullscreen</button>
   </div>
 </header>
 
+<img id="qrOverlay" src="QRCodeTelegram.png" alt="QR Code">
+
 <div id="wall"></div>
 
 <script>
 const FILE_URL = "youtube_links.txt";   // Telethon output file
 const POLL_INTERVAL = 3000;             // ms between checks
-let MAX_VIDEOS = 40;                    // default, can change in UI
+let MAX_VIDEOS = 25;                    // default, can change in UI
 
 const wall = document.getElementById("wall");
 let known = new Set();
@@ -162,7 +181,7 @@ function addVideo(id) {
   ts.className = "timestamp";
   ts.textContent = new Date().toLocaleTimeString();
   div.append(ifr, ts);
-  wall.insertBefore(div, wall.firstChild); // newest on top
+  wall.insertBefore(div, wall.firstChild);
 }
 
 function maintainLimit() {
@@ -172,14 +191,17 @@ function maintainLimit() {
   }
 }
 
-// Controls
 document.getElementById("applyGrid").onclick = () => {
-  const cols = Math.max(1, Math.min(10, +document.getElementById("cols").value || 4));
+  const cols = Math.max(1, Math.min(10, +document.getElementById("cols").value || 5));
   wall.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  MAX_VIDEOS = Math.max(1, Math.min(200, +document.getElementById("maxVideos").value || 40));
+
+  const newMax = Math.max(1, Math.min(200, +document.getElementById("maxVideos").value || 25));
+  if (newMax !== MAX_VIDEOS) {
+    MAX_VIDEOS = newMax;
+    maintainLimit();
+  }
 };
 
-// Fullscreen controls
 document.getElementById("fullscreenBtn").onclick = () => {
   if (!document.fullscreenElement && !document.webkitFullscreenElement) {
     (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement);
@@ -188,7 +210,6 @@ document.getElementById("fullscreenBtn").onclick = () => {
   }
 };
 
-// start the loop
 poll();
 </script>
 </body>
