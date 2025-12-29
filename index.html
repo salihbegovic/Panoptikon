@@ -216,6 +216,26 @@
       border-radius: 6px;
     }
 
+    /* Transparent click-catcher over each YouTube iframe */
+    .video-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    /* If overlay controls are OFF, let the iframe receive all clicks */
+    body.overlays-off .video-overlay {
+      pointer-events: none;
+      display: none;
+    }
+
+    /* In swap mode, let clicks go to the cell (for swapping), not the overlay */
+    .swap-mode .video-overlay {
+      pointer-events: none;
+    }
+
     .cell {
       position: relative;
       border-radius: 8px;
@@ -331,6 +351,10 @@
       <label><input type="checkbox" id="allowDuplicates" checked> Allow Duplicates</label>
       <button id="reload">Rebuild Grid</button>
       <button id="fullscreenBtn">Fullscreen</button>
+
+      <!-- NEW: Toggle overlay click controls on/off -->
+      <button id="overlayToggleBtn" title="When ON: click=mute, double-click=grid fullscreen. When OFF: use YouTube controls.">Max Mode: ON</button>
+
       <button id="aspectModeBtn" title="Toggle tile aspect behavior">Aspect: 16:9</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
@@ -367,30 +391,12 @@
      * Config
      ***********************/
     const SOURCES = [
-      {
-        label: "Sheet 1",
-        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=0&single=true&output=csv"
-      },
-      {
-        label: "Sheet 2",
-        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=331016320&single=true&output=csv"
-      },
-      {
-        label: "Sheet 3",
-        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=181596337&single=true&output=csv"
-      },
-      {
-        label: "Sheet 4",
-        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv"
-      },
-      {
-        label: "Sheet 5",
-        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv"
-      },
-      {
-        label: "Telegram Chat",
-        url: "youtube_links.txt"
-      }
+      { label: "Sheet 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=0&single=true&output=csv" },
+      { label: "Sheet 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=331016320&single=true&output=csv" },
+      { label: "Sheet 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=181596337&single=true&output=csv" },
+      { label: "Sheet 4", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv" },
+      { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" },
+      { label: "Telegram Chat", url: "youtube_links.txt" }
     ];
 
     const TELEGRAM_LABEL = "Telegram Chat";
@@ -406,6 +412,9 @@
     const LAYOUT_STORE_PREFIX = "panoptikon_layout_";
     const ASPECT_MODE_STORE   = "panoptikon_aspect_mode";
 
+    // NEW: store overlay click-controls preference
+    const OVERLAY_CTRL_STORE  = "panoptikon_overlay_controls"; // "1"=ON, "0"=OFF
+
     let telegramLastLineCount = 0;
     let telegramLiveTimer = null;
     let ytApiReady = false;
@@ -416,6 +425,33 @@
     let expandPlaylists = getExpandPref();
     let swapMode = false;
     let firstCell = null;
+
+    // keep player instances so we can mute/unmute
+    const players = new Map();  // iframeId -> YT.Player
+    let clickTimer = null;      // prevent click firing before dblclick
+
+    // ✅ NEW: remember scroll position before entering fullscreen (restore on exit)
+    let scrollBeforeFullscreen = 0;
+
+    /***********************
+     * Overlay controls pref (NEW)
+     ***********************/
+    function getOverlayControlsEnabled() {
+      const v = localStorage.getItem(OVERLAY_CTRL_STORE);
+      return v === null ? true : (v === "1");
+    }
+    function setOverlayControlsEnabled(v) {
+      localStorage.setItem(OVERLAY_CTRL_STORE, v ? "1" : "0");
+    }
+    function applyOverlayControlsState() {
+      const enabled = getOverlayControlsEnabled();
+      document.body.classList.toggle("overlays-off", !enabled);
+      const btn = document.getElementById("overlayToggleBtn");
+      if (btn) {
+        btn.textContent = enabled ? "Max Mode: ON" : "Max Mode: OFF";
+        btn.classList.toggle("toggle-on", enabled);
+      }
+    }
 
     /***********************
      * Utility
@@ -512,6 +548,33 @@
     }
 
     /***********************
+     * Fullscreen helpers
+     ***********************/
+    function toggleGridFullscreen() {
+      const wrapper = document.getElementById("gridWrapper");
+      const isEntering =
+        !document.fullscreenElement &&
+        !document.webkitFullscreenElement;
+
+      if (isEntering) {
+        // ✅ remember scroll position BEFORE entering fullscreen
+        scrollBeforeFullscreen = window.scrollY || window.pageYOffset || 0;
+        (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
+      } else {
+        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+      }
+    }
+
+    function toggleMuteForIframe(iframeId) {
+      const p = players.get(iframeId);
+      if (!p) return;
+      try {
+        if (p.isMuted && p.isMuted()) p.unMute();
+        else p.mute();
+      } catch {}
+    }
+
+    /***********************
      * YouTube API + progress
      ***********************/
     function ensureYouTubeAPI() {
@@ -534,6 +597,7 @@
     function clearPlayerIntervals() {
       for (const i of playerIntervals.values()) clearInterval(i);
       playerIntervals.clear();
+      players.clear();
     }
 
     function initPlayers() {
@@ -559,6 +623,9 @@
             }
           }
         });
+
+        players.set(ifr.id, player);
+
         const intervalId = setInterval(() => {
           try {
             const cur = player.getCurrentTime();
@@ -617,6 +684,36 @@
       ifr.dataset.progressKey = getItemKey(item);
 
       container.appendChild(ifr);
+
+      // overlay to capture click/dblclick over the iframe (optional via button)
+      const overlay = document.createElement("div");
+      overlay.className = "video-overlay";
+
+      // Single click = mute/unmute (when overlay is enabled)
+      overlay.addEventListener("click", (ev) => {
+        if (swapMode) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (clickTimer) clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => {
+          toggleMuteForIframe(ifr.id);
+          clickTimer = null;
+        }, 220);
+      });
+
+      // Double click = fullscreen toggle (like the button)
+      overlay.addEventListener("dblclick", (ev) => {
+        if (swapMode) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+        toggleGridFullscreen();
+      });
+
+      container.appendChild(overlay);
+
       cell.appendChild(container);
       td.appendChild(cell);
       cell.addEventListener("click", onCellClick);
@@ -1262,6 +1359,18 @@
     }
 
     function handleFullscreenChange() {
+      const wrapper = document.getElementById("gridWrapper");
+      const isFS =
+        document.fullscreenElement === wrapper ||
+        document.webkitFullscreenElement === wrapper;
+
+      // ✅ when leaving fullscreen, restore scroll position
+      if (!isFS) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollBeforeFullscreen, behavior: "auto" });
+        });
+      }
+
       resizeGrid();
       updateFullscreenQr();
     }
@@ -1309,13 +1418,15 @@
       updateFullscreenQr();
     });
 
-    document.getElementById("fullscreenBtn").addEventListener("click", () => {
-      const wrapper = document.getElementById("gridWrapper");
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
-      } else {
-        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
-      }
+    document.getElementById("fullscreenBtn").addEventListener("click", toggleGridFullscreen);
+
+    // NEW: toggle overlay click controls
+    document.getElementById("overlayToggleBtn").addEventListener("click", () => {
+      const next = !getOverlayControlsEnabled();
+      setOverlayControlsEnabled(next);
+      applyOverlayControlsState();
+      document.getElementById("status").textContent =
+        next ? "Max Mode ON: click=mute, double-click=grid fullscreen." : "Max Mode OFF: YouTube controls clickable.";
     });
 
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
@@ -1520,6 +1631,9 @@
      * Boot
      ***********************/
     async function init() {
+      // apply overlay state ASAP (so YouTube controls can be used if OFF)
+      applyOverlayControlsState();
+
       const k = localStorage.getItem(KEY_STORE) || "";
       const keyInput = document.getElementById("ytApiKey");
       keyInput.value = k ? "••••••••••••" : "";
