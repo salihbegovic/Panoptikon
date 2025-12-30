@@ -703,7 +703,7 @@
     }
 
     function buildTable(items, settings) {
-      const { cols, rows, forced, slots } = settings;
+      const { cols, forced, slots } = settings;
       const grid = document.getElementById("grid");
 
       clearPlayerIntervals();
@@ -761,7 +761,34 @@
     }
 
     /***********************
-     * Search (kept from your original)
+     * Layout save / load helpers (restored for DIV grid)
+     ***********************/
+    function saveCurrentLayout() {
+      const order = Array.from(document.querySelectorAll("#grid .cell iframe"))
+        .map(ifr => ifr?.dataset?.progressKey)
+        .filter(Boolean);
+      try {
+        localStorage.setItem(layoutKey(), JSON.stringify(order));
+      } catch {}
+      const s = document.getElementById("status");
+      if (s) s.textContent = "Layout saved.";
+    }
+
+    function loadSavedLayout() {
+      try {
+        const raw = localStorage.getItem(layoutKey());
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function clearSavedLayout() {
+      localStorage.removeItem(layoutKey());
+    }
+
+    /***********************
+     * Search (kept)
      ***********************/
     function getApiKey() {
       return localStorage.getItem(KEY_STORE) || "";
@@ -907,9 +934,7 @@
 
       const seen = new Set();
       const push = (arr, it) => {
-        if (allowDup) {
-          arr.push(it); return true;
-        }
+        if (allowDup) { arr.push(it); return true; }
         const k = `video:${it.id}`;
         if (seen.has(k)) return false;
         seen.add(k);
@@ -978,10 +1003,7 @@
       previewStatus.textContent = "Loading sources…";
       const tasks = SOURCES.map(async (src) => {
         const items = await fetchItems(src.url);
-        cache.set(src.label, {
-          items,
-          counts: itemCounts(items)
-        });
+        cache.set(src.label, { items, counts: itemCounts(items) });
       });
       await Promise.all(tasks);
       buildSourcesPreview();
@@ -1136,8 +1158,26 @@
           items = await expandPlaylistsIfEnabled(items, true);
         }
 
-        const forceGridEl = document.getElementById("forceGrid");
+        // Apply saved layout for non-telegram
+        if (label !== TELEGRAM_LABEL) {
+          const savedOrder = loadSavedLayout();
+          if (Array.isArray(savedOrder) && savedOrder.length) {
+            const byKey = new Map(items.map(it => [getItemKey(it), it]));
+            const picked = [];
+            const seen = new Set();
+            for (const k of savedOrder) {
+              const it = byKey.get(k);
+              if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
+            }
+            for (const it of items) {
+              const k = getItemKey(it);
+              if (!seen.has(k)) { picked.push(it); seen.add(k); }
+            }
+            items = picked;
+          }
+        }
 
+        const forceGridEl = document.getElementById("forceGrid");
         if (label !== TELEGRAM_LABEL && !forceGridEl.checked) {
           const n = items.length || 1;
           const opt = computeOptimalGrid(n);
@@ -1177,21 +1217,100 @@
       }
     }
 
-    function clearSavedLayout() {
-      localStorage.removeItem(layoutKey());
-    }
-
     function updateLoadedCounts(displayItems) {
       document.getElementById("loadedCount").textContent =
         `Loaded embeds: ${displayItems.length}`;
     }
 
     /***********************
-     * Swap mode placeholder
+     * ✅ Swap mode (RESTORED for DIV grid, no reload)
      ***********************/
+    const swapBtn = document.getElementById("swapModeBtn");
+
+    function clearSwapHighlights() {
+      document.querySelectorAll(".cell").forEach(c =>
+        c.classList.remove("swap-highlight", "swap-pending")
+      );
+    }
+
+    function setSwapMode(on) {
+      swapMode = !!on;
+      document.body.classList.toggle("swap-mode", swapMode);
+
+      if (swapBtn) {
+        swapBtn.classList.toggle("toggle-on", swapMode);
+        swapBtn.textContent = swapMode ? "Swap Mode: ON" : "Swap Mode";
+      }
+
+      clearSwapHighlights();
+      firstCell = null;
+
+      const s = document.getElementById("status");
+      if (s) s.textContent = swapMode
+        ? "Swap Mode ON: click two videos to swap their positions."
+        : "";
+    }
+
+    function swapTwoCellsDom(a, b) {
+      if (!a || !b || a === b) return;
+      const parent = a.parentNode;
+      if (!parent || parent !== b.parentNode) return;
+
+      // Swap DOM nodes without rebuilding => videos keep playing
+      const aNext = a.nextSibling;
+      const bNext = b.nextSibling;
+
+      if (aNext === b) {
+        parent.insertBefore(b, a);
+      } else if (bNext === a) {
+        parent.insertBefore(a, b);
+      } else {
+        parent.insertBefore(a, bNext);
+        parent.insertBefore(b, aNext);
+      }
+    }
+
     function onCellClick(e) {
       if (!swapMode) return;
+
+      const cell = e.currentTarget;
+      if (cell.classList.contains("empty")) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!firstCell) {
+        firstCell = cell;
+        clearSwapHighlights();
+        cell.classList.add("swap-pending");
+        return;
+      }
+
+      if (cell === firstCell) {
+        firstCell.classList.remove("swap-pending");
+        firstCell = null;
+        return;
+      }
+
+      swapTwoCellsDom(firstCell, cell);
+
+      firstCell.classList.remove("swap-pending");
+      cell.classList.add("swap-highlight");
+      setTimeout(() => cell.classList.remove("swap-highlight"), 300);
+
+      firstCell = null;
+
+      requestAnimationFrame(() => resizeGrid());
+      saveCurrentLayout();
     }
+
+    if (swapBtn) {
+      swapBtn.addEventListener("click", () => setSwapMode(!swapMode));
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && swapMode) setSwapMode(false);
+    });
 
     /***********************
      * Fullscreen + QR overlay
@@ -1253,14 +1372,10 @@
     });
 
     /***********************
-     * Controls wiring (minimal)
+     * Controls wiring
      ***********************/
-    document.getElementById("searchFillBtn").addEventListener("click", () => {
-      doSearchFill(false);
-    });
-    document.getElementById("randomFillBtn").addEventListener("click", () => {
-      doSearchFill(true);
-    });
+    document.getElementById("searchFillBtn").addEventListener("click", () => doSearchFill(false));
+    document.getElementById("randomFillBtn").addEventListener("click", () => doSearchFill(true));
 
     document.getElementById("reload").addEventListener("click", () => {
       loadSelectedIntoGrid(getSelectedIndex());
@@ -1278,6 +1393,28 @@
     });
 
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
+
+    // Save/Clear layout buttons (restored)
+    document.getElementById("saveLayoutBtn").addEventListener("click", saveCurrentLayout);
+    document.getElementById("clearLayoutBtn").addEventListener("click", () => {
+      clearSavedLayout();
+      const s = document.getElementById("status");
+      if (s) s.textContent = "Saved layout cleared.";
+    });
+
+    // Save API key button (your UI had it but your pasted JS didn't wire it)
+    document.getElementById("saveKeyBtn").addEventListener("click", () => {
+      const input = document.getElementById("ytApiKey");
+      const v = (input.value || "").trim();
+      if (!v) {
+        localStorage.removeItem(KEY_STORE);
+        document.getElementById("keyStatus").textContent = "Cleared API key.";
+        return;
+      }
+      localStorage.setItem(KEY_STORE, v);
+      input.value = "••••••••••••";
+      document.getElementById("keyStatus").textContent = "API key saved locally.";
+    });
 
     window.addEventListener("resize", () => {
       buildSourcesPreview();
@@ -1332,7 +1469,6 @@
 
       grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
 
-      // If empty, build once
       if (!grid.firstElementChild) {
         buildTable([item], settings);
         telegramDisplayKeys = [getItemKey(item)];
@@ -1341,11 +1477,9 @@
         return;
       }
 
-      // Insert new cell at the beginning (same parent => no iframe reload)
       const newCell = makeCell(item, 0);
       grid.insertBefore(newCell, grid.firstChild);
 
-      // Trim to maxCells by removing last
       while (grid.children.length > maxCells) {
         const last = grid.lastElementChild;
         last?.remove();
@@ -1390,7 +1524,7 @@
 
         if (lines.length <= telegramLastLineCount) return;
 
-        // New lines are PREPENDED at the TOP (newest-first file)
+        // new lines are at the TOP (newest-first file)
         const newCount = lines.length - telegramLastLineCount;
         if (newCount <= 0) return;
 
@@ -1401,22 +1535,18 @@
         const newItems = newLines.map(parseYouTube).filter(Boolean);
         if (!newItems.length) return;
 
-        // Keep cache newest-first
         let updated = newItems.concat(existing);
         if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
           updated = updated.slice(0, TELEGRAM_MAX_VIDEOS * 3);
         }
 
-        cache.set(TELEGRAM_LABEL, {
-          items: updated,
-          counts: itemCounts(updated)
-        });
+        cache.set(TELEGRAM_LABEL, { items: updated, counts: itemCounts(updated) });
 
         const selectedLabel = SOURCES[getSelectedIndex()]?.label;
         if (selectedLabel === TELEGRAM_LABEL) {
           const settings = getGridSettings();
 
-          // If multiple new items arrived, prepend oldest-first so newest ends up on top
+          // prepend oldest-first so newest ends up at very top
           for (let i = newItems.length - 1; i >= 0; i--) {
             prependTelegramItemToGrid(newItems[i], settings);
           }
