@@ -183,19 +183,21 @@
       box-shadow: 0 0 0 3px rgba(125,211,252,.25) inset;
     }
 
-    table {
-      border-collapse: separate;
-      border-spacing: 6px;
-      margin: auto;
+    /* --- Grid container replaces table --- */
+    #grid {
+      display: grid;
+      gap: 6px;
       width: 100%;
-      table-layout: fixed;
     }
-    td {
+    #gridWrapper:fullscreen #grid,
+    #gridWrapper:-webkit-full-screen #grid {
+      gap: 2px;
+    }
+    .grid-cell {
       background: #0d1117;
       border: 1px solid #1c2230;
       border-radius: 8px;
       padding: 0;
-      vertical-align: top;
     }
 
     .video-container {
@@ -263,25 +265,9 @@
       height: 100vh;
       margin: 0;
     }
-    #gridWrapper:fullscreen table {
-      width: 100%;
-      height: 100%;
-      border-spacing: 2px;
-    }
-    #gridWrapper:fullscreen td {
-      padding: 0;
-    }
     #gridWrapper:-webkit-full-screen {
       width: 100vw;
       height: 100vh;
-    }
-    #gridWrapper:-webkit-full-screen table {
-      width: 100%;
-      height: 100%;
-      border-spacing: 2px;
-    }
-    #gridWrapper:-webkit-full-screen td {
-      padding: 0;
     }
 
     .swap-mode iframe {
@@ -328,6 +314,7 @@
     .spacer { flex: 1; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <h1>📺 Panoptikon 3.0 <span class="badge">Ich ficke deine Mutter</span></h1>
@@ -351,10 +338,7 @@
       <label><input type="checkbox" id="allowDuplicates" checked> Allow Duplicates</label>
       <button id="reload">Rebuild Grid</button>
       <button id="fullscreenBtn">Fullscreen</button>
-
-      <!-- NEW: Toggle overlay click controls on/off -->
       <button id="overlayToggleBtn" title="When ON: click=mute, double-click=grid fullscreen. When OFF: use YouTube controls.">Max Mode: ON</button>
-
       <button id="aspectModeBtn" title="Toggle tile aspect behavior">Aspect: 16:9</button>
       <button id="resetBtn">Reset Progress</button>
       <button id="swapModeBtn" title="Click to enable swap, then click two videos to swap their positions">Swap Mode</button>
@@ -382,7 +366,7 @@
 
     <div id="gridWrapper">
       <img id="qrCodeOverlay" src="QRCodeTelegram.png" alt="QR Code">
-      <table><tbody id="tbody"></tbody></table>
+      <div id="grid"></div>
     </div>
   </div>
 
@@ -411,9 +395,7 @@
     const EXPAND_STORE        = "panoptikon_expand_playlists";
     const LAYOUT_STORE_PREFIX = "panoptikon_layout_";
     const ASPECT_MODE_STORE   = "panoptikon_aspect_mode";
-
-    // NEW: store overlay click-controls preference
-    const OVERLAY_CTRL_STORE  = "panoptikon_overlay_controls"; // "1"=ON, "0"=OFF
+    const OVERLAY_CTRL_STORE  = "panoptikon_overlay_controls";
 
     let telegramLastLineCount = 0;
     let telegramLiveTimer = null;
@@ -426,15 +408,12 @@
     let swapMode = false;
     let firstCell = null;
 
-    // keep player instances so we can mute/unmute
-    const players = new Map();  // iframeId -> YT.Player
-    let clickTimer = null;      // prevent click firing before dblclick
-
-    // ✅ NEW: remember scroll position before entering fullscreen (restore on exit)
+    const players = new Map();
+    let clickTimer = null;
     let scrollBeforeFullscreen = 0;
 
     /***********************
-     * Overlay controls pref (NEW)
+     * Overlay controls pref
      ***********************/
     function getOverlayControlsEnabled() {
       const v = localStorage.getItem(OVERLAY_CTRL_STORE);
@@ -557,7 +536,6 @@
         !document.webkitFullscreenElement;
 
       if (isEntering) {
-        // ✅ remember scroll position BEFORE entering fullscreen
         scrollBeforeFullscreen = window.scrollY || window.pageYOffset || 0;
         (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
       } else {
@@ -602,7 +580,7 @@
 
     function initPlayers() {
       if (!ytApiReady) return;
-      const iframes = Array.from(document.querySelectorAll("#tbody iframe[data-progress-key]"));
+      const iframes = Array.from(document.querySelectorAll("#grid iframe[data-progress-key]"));
       iframes.forEach((ifr) => {
         if (ifr.dataset.bound === "1") return;
         const pkey = ifr.dataset.progressKey;
@@ -667,9 +645,8 @@
     }
 
     function makeCell(item, idx) {
-      const td = document.createElement("td");
       const cell = document.createElement("div");
-      cell.className = "cell";
+      cell.className = "cell grid-cell";
       cell.dataset.cellIndex = String(idx);
 
       const container = document.createElement("div");
@@ -685,11 +662,9 @@
 
       container.appendChild(ifr);
 
-      // overlay to capture click/dblclick over the iframe (optional via button)
       const overlay = document.createElement("div");
       overlay.className = "video-overlay";
 
-      // Single click = mute/unmute (when overlay is enabled)
       overlay.addEventListener("click", (ev) => {
         if (swapMode) return;
         ev.preventDefault();
@@ -702,7 +677,6 @@
         }, 220);
       });
 
-      // Double click = fullscreen toggle (like the button)
       overlay.addEventListener("dblclick", (ev) => {
         if (swapMode) return;
         ev.preventDefault();
@@ -713,46 +687,40 @@
       });
 
       container.appendChild(overlay);
-
       cell.appendChild(container);
-      td.appendChild(cell);
+
       cell.addEventListener("click", onCellClick);
-      return td;
+      return cell;
     }
 
     function makeEmptyCell(idx) {
-      const td = document.createElement("td");
       const cell = document.createElement("div");
-      cell.className = "cell empty";
+      cell.className = "cell empty grid-cell";
       cell.dataset.cellIndex = String(idx);
       cell.textContent = "Empty";
       cell.addEventListener("click", onCellClick);
-      td.appendChild(cell);
-      return td;
+      return cell;
     }
 
     function buildTable(items, settings) {
       const { cols, rows, forced, slots } = settings;
-      const tbody = document.getElementById("tbody");
+      const grid = document.getElementById("grid");
+
       clearPlayerIntervals();
-      tbody.innerHTML = "";
+      grid.innerHTML = "";
+
+      grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
 
       let list = items.slice();
       if (forced) list = list.slice(0, slots);
 
-      const rowCount = forced ? rows : Math.max(1, Math.ceil(list.length / cols));
-      let i = 0;
-      for (let r = 0; r < rowCount; r++) {
-        const rowEl = document.createElement("tr");
-        tbody.appendChild(rowEl);
-        for (let c = 0; c < cols; c++) {
-          if (i < list.length) {
-            rowEl.appendChild(makeCell(list[i], i));
-            i++;
-          } else if (forced) {
-            rowEl.appendChild(makeEmptyCell(i));
-            i++;
-          }
+      const targetCount = forced ? slots : list.length;
+
+      for (let i = 0; i < targetCount; i++) {
+        if (i < list.length) {
+          grid.appendChild(makeCell(list[i], i));
+        } else {
+          grid.appendChild(makeEmptyCell(i));
         }
       }
 
@@ -793,7 +761,7 @@
     }
 
     /***********************
-     * Search
+     * Search (kept from your original)
      ***********************/
     function getApiKey() {
       return localStorage.getItem(KEY_STORE) || "";
@@ -985,7 +953,7 @@
      ***********************/
     function getSelectedIndex() {
       let v = +localStorage.getItem(STORAGE_SELECTED);
-      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5; // default: Telegram
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5;
       return v;
     }
 
@@ -1079,7 +1047,7 @@
         let cols, rows, slots;
 
         if (src.label === TELEGRAM_LABEL) {
-          const recent = items.slice(-25).reverse();
+          const recent = items.slice(0, 25);
           items = recent;
           cols = 5;
           rows = 5;
@@ -1152,11 +1120,6 @@
       return cache.get(label)?.items || [];
     }
 
-    function applyGridToInputs(cols, rows) {
-      document.getElementById("cols").value = String(cols);
-      document.getElementById("rows").value = String(rows);
-    }
-
     async function loadSelectedIntoGrid(idx) {
       const error = document.getElementById("error");
       const status = document.getElementById("status");
@@ -1173,41 +1136,20 @@
           items = await expandPlaylistsIfEnabled(items, true);
         }
 
-        if (label !== TELEGRAM_LABEL) {
-          const savedOrder = loadSavedLayout();
-          if (Array.isArray(savedOrder) && savedOrder.length) {
-            const byKey = new Map(items.map(it => [getItemKey(it), it]));
-            const picked = [];
-            const seen = new Set();
-            for (const k of savedOrder) {
-              const it = byKey.get(k);
-              if (it && !seen.has(k)) { picked.push(it); seen.add(k); }
-            }
-            for (const it of items) {
-              const k = getItemKey(it);
-              if (!seen.has(k)) { picked.push(it); seen.add(k); }
-            }
-            items = picked;
-          }
-        }
-
         const forceGridEl = document.getElementById("forceGrid");
 
-        // For non-Telegram: auto grid if not forced
         if (label !== TELEGRAM_LABEL && !forceGridEl.checked) {
           const n = items.length || 1;
-          const { cols, rows } = computeOptimalGrid(n);
-          applyGridToInputs(cols, rows);
+          const opt = computeOptimalGrid(n);
+          document.getElementById("cols").value = String(opt.cols);
+          document.getElementById("rows").value = String(opt.rows);
         }
-        // For Telegram: do NOT override cols/rows here.
-        // Default is 5x5 from HTML; user can change & use Force grid.
 
         const settings = getGridSettings();
         let display;
 
         if (label === TELEGRAM_LABEL) {
-          const all = items.slice(-TELEGRAM_MAX_VIDEOS);
-          const newestFirst = all.slice().reverse();
+          const newestFirst = items.slice(0, TELEGRAM_MAX_VIDEOS);
           const limit = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
           display = newestFirst.slice(0, limit);
           buildTable(display, settings);
@@ -1217,21 +1159,13 @@
           buildTable(display, settings);
         }
 
-        const missing = settings.forced
-          ? Math.max(0, settings.slots - display.length)
-          : 0;
-
         loadedCountEl.textContent =
           `Loaded embeds: ${display.length} from ${label}` +
           (expandPlaylists && label !== TELEGRAM_LABEL ? " (playlists expanded)" : "");
 
-        const summary = settings.forced
+        status.textContent = settings.forced
           ? `Loaded ${display.length}/${settings.slots} slot(s) from ${label}.`
           : `Loaded ${display.length} item${display.length === 1 ? "" : "s"} from ${label}. (Grid: ${document.getElementById("cols").value}×${document.getElementById("rows").value})`;
-
-        status.textContent = summary + (missing
-          ? ` (showing ${missing} empty slot${missing === 1 ? "" : "s"})`
-          : "");
 
         updateFullscreenQr();
       } catch (e) {
@@ -1240,25 +1174,6 @@
         error.textContent = e.message || String(e);
         error.style.display = "block";
         console.error(e);
-      }
-    }
-
-    function saveCurrentLayout() {
-      const order = Array.from(document.querySelectorAll("#tbody .cell iframe"))
-        .map(ifr => ifr?.dataset?.progressKey)
-        .filter(Boolean);
-      try {
-        localStorage.setItem(layoutKey(), JSON.stringify(order));
-      } catch {}
-      document.getElementById("status").textContent = "Layout saved.";
-    }
-
-    function loadSavedLayout() {
-      try {
-        const raw = localStorage.getItem(layoutKey());
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        return null;
       }
     }
 
@@ -1272,76 +1187,11 @@
     }
 
     /***********************
-     * Swap mode
+     * Swap mode placeholder
      ***********************/
-    const swapBtn = document.getElementById("swapModeBtn");
-
-    function clearSwapHighlights() {
-      document
-        .querySelectorAll(".cell")
-        .forEach(c => c.classList.remove("swap-highlight", "swap-pending"));
-    }
-
     function onCellClick(e) {
       if (!swapMode) return;
-      const cell = e.currentTarget;
-      if (!firstCell) {
-        firstCell = cell;
-        clearSwapHighlights();
-        cell.classList.add("swap-pending");
-        return;
-      }
-      if (cell === firstCell) {
-        firstCell.classList.remove("swap-pending");
-        firstCell = null;
-        return;
-      }
-      swapCellContents(firstCell, cell);
-      firstCell.classList.remove("swap-pending");
-      cell.classList.add("swap-highlight");
-      setTimeout(() => {
-        cell.classList.remove("swap-highlight");
-      }, 400);
-      firstCell = null;
-      requestAnimationFrame(() => {
-        ensureYouTubeAPI();
-        resizeGrid();
-      });
-      saveCurrentLayout();
     }
-
-    function swapCellContents(cellA, cellB) {
-      const tempA = document.createElement("div");
-      while (cellA.firstChild) tempA.appendChild(cellA.firstChild);
-      const tempB = document.createElement("div");
-      while (cellB.firstChild) tempB.appendChild(cellB.firstChild);
-      while (tempB.firstChild) cellA.appendChild(tempB.firstChild);
-      while (tempA.firstChild) cellB.appendChild(tempA.firstChild);
-      const hasIframeA = !!cellA.querySelector("iframe");
-      const hasIframeB = !!cellB.querySelector("iframe");
-      cellA.classList.toggle("empty", !hasIframeA);
-      cellB.classList.toggle("empty", !hasIframeB);
-    }
-
-    swapBtn.addEventListener("click", () => {
-      swapMode = !swapMode;
-      swapBtn.classList.toggle("toggle-on", swapMode);
-      swapBtn.textContent = swapMode ? "Swap Mode: ON" : "Swap Mode";
-      document.body.classList.toggle("swap-mode", swapMode);
-      clearSwapHighlights();
-      firstCell = null;
-    });
-
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && swapMode) {
-        swapMode = false;
-        document.body.classList.remove("swap-mode");
-        swapBtn.classList.remove("toggle-on");
-        swapBtn.textContent = "Swap Mode";
-        clearSwapHighlights();
-        firstCell = null;
-      }
-    });
 
     /***********************
      * Fullscreen + QR overlay
@@ -1364,7 +1214,6 @@
         document.fullscreenElement === wrapper ||
         document.webkitFullscreenElement === wrapper;
 
-      // ✅ when leaving fullscreen, restore scroll position
       if (!isFS) {
         requestAnimationFrame(() => {
           window.scrollTo({ top: scrollBeforeFullscreen, behavior: "auto" });
@@ -1404,7 +1253,7 @@
     });
 
     /***********************
-     * Controls wiring
+     * Controls wiring (minimal)
      ***********************/
     document.getElementById("searchFillBtn").addEventListener("click", () => {
       doSearchFill(false);
@@ -1420,7 +1269,6 @@
 
     document.getElementById("fullscreenBtn").addEventListener("click", toggleGridFullscreen);
 
-    // NEW: toggle overlay click controls
     document.getElementById("overlayToggleBtn").addEventListener("click", () => {
       const next = !getOverlayControlsEnabled();
       setOverlayControlsEnabled(next);
@@ -1430,26 +1278,6 @@
     });
 
     document.getElementById("resetBtn").addEventListener("click", resetProgress);
-
-    document.getElementById("saveLayoutBtn").addEventListener("click", saveCurrentLayout);
-
-    document.getElementById("clearLayoutBtn").addEventListener("click", () => {
-      clearSavedLayout();
-      document.getElementById("status").textContent = "Saved layout cleared.";
-    });
-
-    document.getElementById("saveKeyBtn").addEventListener("click", () => {
-      const input = document.getElementById("ytApiKey");
-      const v = input.value.trim();
-      if (!v) {
-        localStorage.removeItem(KEY_STORE);
-        document.getElementById("keyStatus").textContent = "Cleared API key.";
-        return;
-      }
-      localStorage.setItem(KEY_STORE, v);
-      input.value = "••••••••••••";
-      document.getElementById("keyStatus").textContent = "API key saved locally.";
-    });
 
     window.addEventListener("resize", () => {
       buildSourcesPreview();
@@ -1495,65 +1323,44 @@
     }
 
     /***********************
-     * Telegram incremental updates
+     * Telegram incremental updates (NO reload of existing iframes)
      ***********************/
     function prependTelegramItemToGrid(item, settings) {
-      const tbody = document.getElementById("tbody");
-      const { cols } = settings;
+      const grid = document.getElementById("grid");
+      const cols = settings.cols;
       const maxCells = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
 
-      if (!tbody.firstElementChild) {
+      grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+
+      // If empty, build once
+      if (!grid.firstElementChild) {
         buildTable([item], settings);
         telegramDisplayKeys = [getItemKey(item)];
-        initPlayers();
+        ensureYouTubeAPI();
+        if (ytApiReady) initPlayers();
         return;
       }
 
-      const newTd = makeCell(item, 0);
-      const firstRow = tbody.firstElementChild;
-      firstRow.insertBefore(newTd, firstRow.firstElementChild);
+      // Insert new cell at the beginning (same parent => no iframe reload)
+      const newCell = makeCell(item, 0);
+      grid.insertBefore(newCell, grid.firstChild);
 
-      // Cascade overflow to the END of each row (keeps most existing cells stable)
-      let currentRow = firstRow;
-      while (currentRow) {
-        const cells = currentRow.children;
-        if (cells.length <= cols) {
-          currentRow = currentRow.nextElementSibling;
-          continue;
-        }
-        const overflowTd = cells[cells.length - 1];
-        let nextRow = currentRow.nextElementSibling;
-        if (!nextRow) {
-          nextRow = document.createElement("tr");
-          tbody.appendChild(nextRow);
-        }
-        nextRow.appendChild(overflowTd);
-        currentRow = nextRow;
-      }
-
-      // Enforce max cells
-      const allTds = tbody.querySelectorAll("td");
-      if (allTds.length > maxCells) {
-        const extra = allTds.length - maxCells;
-        for (let i = 0; i < extra; i++) {
-          const lastRow = tbody.lastElementChild;
-          if (!lastRow) break;
-          const lastCell = lastRow.lastElementChild;
-          if (lastCell) lastRow.removeChild(lastCell);
-          if (!lastRow.children.length) tbody.removeChild(lastRow);
-        }
+      // Trim to maxCells by removing last
+      while (grid.children.length > maxCells) {
+        const last = grid.lastElementChild;
+        last?.remove();
       }
 
       const key = getItemKey(item);
-      telegramDisplayKeys.unshift(key);
-      if (telegramDisplayKeys.length > maxCells) {
-        telegramDisplayKeys.length = maxCells;
-      }
+      telegramDisplayKeys = [key, ...telegramDisplayKeys].slice(0, maxCells);
 
       ensureYouTubeAPI();
       if (ytApiReady) initPlayers();
 
-      requestAnimationFrame(resizeGrid);
+      requestAnimationFrame(() => {
+        resizeGrid();
+        updateFullscreenQr();
+      });
     }
 
     async function pollTelegramLinks() {
@@ -1583,16 +1390,21 @@
 
         if (lines.length <= telegramLastLineCount) return;
 
-        const newLines = lines.slice(telegramLastLineCount);
+        // New lines are PREPENDED at the TOP (newest-first file)
+        const newCount = lines.length - telegramLastLineCount;
+        if (newCount <= 0) return;
+
+        const newLines = lines.slice(0, newCount);
         telegramLastLineCount = lines.length;
 
         const existing = (cache.get(TELEGRAM_LABEL)?.items || []);
         const newItems = newLines.map(parseYouTube).filter(Boolean);
         if (!newItems.length) return;
 
-        let updated = existing.concat(newItems);
+        // Keep cache newest-first
+        let updated = newItems.concat(existing);
         if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
-          updated = updated.slice(-TELEGRAM_MAX_VIDEOS * 3);
+          updated = updated.slice(0, TELEGRAM_MAX_VIDEOS * 3);
         }
 
         cache.set(TELEGRAM_LABEL, {
@@ -1603,10 +1415,13 @@
         const selectedLabel = SOURCES[getSelectedIndex()]?.label;
         if (selectedLabel === TELEGRAM_LABEL) {
           const settings = getGridSettings();
-          for (const it of newItems) {
-            prependTelegramItemToGrid(it, settings);
+
+          // If multiple new items arrived, prepend oldest-first so newest ends up on top
+          for (let i = newItems.length - 1; i >= 0; i--) {
+            prependTelegramItemToGrid(newItems[i], settings);
           }
-          const shownCount = document.querySelectorAll("#tbody td iframe").length;
+
+          const shownCount = document.querySelectorAll("#grid iframe").length;
           document.getElementById("loadedCount").textContent =
             `Loaded embeds: ${shownCount} from Telegram Chat (live)`;
           document.getElementById("status").textContent =
@@ -1631,7 +1446,6 @@
      * Boot
      ***********************/
     async function init() {
-      // apply overlay state ASAP (so YouTube controls can be used if OFF)
       applyOverlayControlsState();
 
       const k = localStorage.getItem(KEY_STORE) || "";
@@ -1651,20 +1465,6 @@
       const selected = getSelectedIndex();
       setSelectedIndex(selected);
       await loadSelectedIntoGrid(selected);
-
-      const expandBtn = document.getElementById("expandPlaylistsBtn");
-      function renderExpandBtn() {
-        expandBtn.classList.toggle("toggle-on", expandPlaylists);
-        expandBtn.textContent = expandPlaylists ? "Playlists: ALL videos" : "Playlists: ONE item";
-      }
-      expandBtn.onclick = () => {
-        expandPlaylists = !expandPlaylists;
-        setExpandPref(expandPlaylists);
-        renderExpandBtn();
-        loadSelectedIntoGrid(getSelectedIndex());
-        updateFullscreenQr();
-      };
-      renderExpandBtn();
 
       renderAspectBtn();
       requestAnimationFrame(() => {

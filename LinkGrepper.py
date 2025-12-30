@@ -1,16 +1,14 @@
 # get_links_from_telegram_live.py
 #
 # - Fetch existing messages from the Telegram chat (via invite link)
-# - Extract all URLs, filter YouTube links
-# - Keep unique links across restarts (via AllLinks.txt / youtube_links.txt)
-# - Then listen live and append new unique links as they arrive
+# - Extract all URLs
+# - Keep unique links in AllLinks.txt (across restarts)
+# - Write EVERY YouTube URL occurrence to youtube_links.txt (duplicates allowed)
+# - Files are kept in REVERSE ORDER (newest at top)
+# - New links are PREPENDED to files
 #
 # Requirements:
 #   pip install telethon
-#
-# Output files (in same folder as index.html):
-#   - AllLinks.txt         -> every unique URL from the chat
-#   - youtube_links.txt    -> every unique YouTube URL (this is what index.html reads)
 
 import re
 import os
@@ -20,12 +18,12 @@ from telethon.errors import rpcerrorlist
 
 
 # ---------- CONFIG ----------
-api_id = 31184561  # replace if needed
-api_hash = "a9bfdde6cfe48313a46cc895ab3217ee"  # replace if needed
+api_id = 31184561
+api_hash = "a9bfdde6cfe48313a46cc895ab3217ee"
 session_name = "panoptikon_links"
 
-INVITE_LINK = "https://t.me/+VSZz8Z5oo_w2MDRk"  # your chat's invite link
-MESSAGE_LIMIT = None  # None = all available history
+INVITE_LINK = "https://t.me/+VSZz8Z5oo_w2MDRk"
+MESSAGE_LIMIT = None
 # ----------------------------
 
 URL_REGEX = re.compile(r'(https?://[^\s<>\]\)"]+)', re.IGNORECASE)
@@ -34,13 +32,12 @@ ALL_LINKS_FILE = "AllLinks.txt"
 YOUTUBE_LINKS_FILE = "youtube_links.txt"
 
 
-# ---------- HELPER FUNCTIONS ----------
+# ---------- HELPERS ----------
 
 def ensure_file_exists(path):
-    """Create the file if it doesn't exist."""
     if not os.path.exists(path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("")  # create empty file
+        with open(path, "w", encoding="utf-8"):
+            pass
 
 
 def is_youtube(url: str) -> bool:
@@ -52,47 +49,32 @@ def is_youtube(url: str) -> bool:
     return host.endswith("youtube.com") or host.endswith("youtu.be")
 
 
-def load_existing_links_from_files():
-    """
-    Make sure we don't re-add URLs across restarts.
-    Ensures files exist before reading.
-    """
-    ensure_file_exists(ALL_LINKS_FILE)
-    ensure_file_exists(YOUTUBE_LINKS_FILE)
-
-    existing = set()
-    for path in (ALL_LINKS_FILE, YOUTUBE_LINKS_FILE):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    url = line.strip()
-                    if url:
-                        existing.add(url)
-        except Exception as e:
-            print(f"Warning: could not read {path}: {e}")
-    return existing
+def read_file_lines(path):
+    ensure_file_exists(path)
+    with open(path, "r", encoding="utf-8") as f:
+        return [line.rstrip("\n") for line in f if line.strip()]
 
 
-def append_links(all_links, youtube_links):
-    """Append new links to the files, creating them if needed."""
-    ensure_file_exists(ALL_LINKS_FILE)
-    ensure_file_exists(YOUTUBE_LINKS_FILE)
+def write_lines(path, lines):
+    with open(path, "w", encoding="utf-8") as f:
+        for line in lines:
+            f.write(line + "\n")
 
-    if all_links:
-        with open(ALL_LINKS_FILE, "a", encoding="utf-8") as f:
-            for url in all_links:
-                f.write(url + "\n")
 
-    if youtube_links:
-        with open(YOUTUBE_LINKS_FILE, "a", encoding="utf-8") as f:
-            for url in youtube_links:
-                f.write(url + "\n")
+def prepend_lines(path, new_lines):
+    if not new_lines:
+        return
+    existing = read_file_lines(path)
+    write_lines(path, new_lines + existing)
+
+
+def load_existing_all_links():
+    return set(read_file_lines(ALL_LINKS_FILE))
 
 
 # ---------- MAIN ----------
 
 async def main():
-    # Ensure output files exist
     ensure_file_exists(ALL_LINKS_FILE)
     ensure_file_exists(YOUTUBE_LINKS_FILE)
 
@@ -100,26 +82,19 @@ async def main():
     await client.start()
     print("✅ Client started.")
 
-    # Resolve the chat from invite link
     try:
         entity = await client.get_entity(INVITE_LINK)
-    except rpcerrorlist.InviteHashExpiredError:
-        print("❌ Invite link is expired or invalid.")
-        return
-    except rpcerrorlist.InviteHashInvalidError:
-        print("❌ Invite link is invalid.")
-        return
     except Exception as e:
-        print(f"❌ Could not resolve chat from invite link: {e}")
+        print(f"❌ Failed to resolve chat: {e}")
         return
 
     print(f"📨 Fetching messages from: {getattr(entity, 'title', str(entity))}")
 
-    seen_links = load_existing_links_from_files()
+    seen_all = load_existing_all_links()
 
     # ---------- INITIAL FETCH ----------
-    new_links = []
-    new_yt_links = []
+    unique_all_newest_first = []
+    yt_newest_first = []
 
     async for msg in client.iter_messages(entity, limit=MESSAGE_LIMIT):
         text = msg.message or ""
@@ -128,20 +103,24 @@ async def main():
 
         for match in URL_REGEX.findall(text):
             url = match.strip().rstrip(").,;\"'<>]")
-            if not url or url in seen_links:
+            if not url:
                 continue
 
-            seen_links.add(url)
-            new_links.append(url)
-            if is_youtube(url):
-                new_yt_links.append(url)
+            # newest-first by default
+            if url not in seen_all:
+                seen_all.add(url)
+                unique_all_newest_first.append(url)
 
-    append_links(new_links, new_yt_links)
+            if is_youtube(url):
+                yt_newest_first.append(url)
+
+    # Write newest-first
+    prepend_lines(ALL_LINKS_FILE, unique_all_newest_first)
+    prepend_lines(YOUTUBE_LINKS_FILE, yt_newest_first)
 
     print("✅ Initial fetch done.")
-    print(f"🧩 New links this run: {len(new_links)}")
-    print(f"🎬 New YouTube links this run: {len(new_yt_links)}")
-    print(f"📦 Total unique links known: {len(seen_links)}")
+    print(f"🧩 AllLinks.txt +{len(unique_all_newest_first)}")
+    print(f"🎬 youtube_links.txt +{len(yt_newest_first)}")
 
     # ---------- LIVE LISTENER ----------
     async def handle_new_message(event):
@@ -149,35 +128,42 @@ async def main():
         if not text:
             return
 
-        added = []
-        added_yt = []
+        prepend_all = []
+        prepend_yt = []
 
         for match in URL_REGEX.findall(text):
             url = match.strip().rstrip(").,;\"'<>]")
-            if not url or url in seen_links:
+            if not url:
                 continue
 
-            seen_links.add(url)
-            added.append(url)
+            if url not in seen_all:
+                seen_all.add(url)
+                prepend_all.append(url)
+
             if is_youtube(url):
-                added_yt.append(url)
+                prepend_yt.append(url)
 
-        if not added:
-            return
+        if prepend_all:
+            prepend_lines(ALL_LINKS_FILE, prepend_all)
 
-        append_links(added, added_yt)
+        if prepend_yt:
+            prepend_lines(YOUTUBE_LINKS_FILE, prepend_yt)
 
-        print(f"\n[NEW MESSAGE] {len(added)} new link(s):")
-        for u in added:
-            print("   ", u)
+        if prepend_all or prepend_yt:
+            print("\n[NEW MESSAGE]")
+            if prepend_all:
+                print(f"  🧩 AllLinks.txt +{len(prepend_all)} (prepended)")
+            if prepend_yt:
+                print(f"  🎬 youtube_links.txt +{len(prepend_yt)} (prepended)")
+                for u in prepend_yt:
+                    print("     ", u)
 
     client.add_event_handler(handle_new_message, events.NewMessage(chats=entity))
 
-    print("📡 Now listening for new messages in that chat...")
+    print("📡 Listening for new messages...")
     await client.run_until_disconnected()
 
 
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-
