@@ -380,10 +380,21 @@
       { label: "Sheet 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=181596337&single=true&output=csv" },
       { label: "Sheet 4", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=362795220&single=true&output=csv" },
       { label: "Sheet 5", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY1cQqEGljkzemrYVAeDNZeTHDFC8cm80tvou_WtbyB7V9-ek/pub?gid=1039723187&single=true&output=csv" },
-      { label: "Telegram Chat", url: "youtube_links.txt" }
+
+      // Telegram-style live sources (handled like youtube_links.txt)
+      { label: "Telegram Chat 1", url: "youtube_links.txt" },
+      { label: "Telegram Chat 2", url: "youtube_links2.txt" },
+      { label: "Telegram Chat 3", url: "youtube_links3.txt" }
     ];
 
-    const TELEGRAM_LABEL = "Telegram Chat";
+    const TELEGRAM_LABELS = new Set(["Telegram Chat 1", "Telegram Chat 2", "Telegram Chat 3"]);
+    const TELEGRAM_QR_BY_LABEL = {
+      "Telegram Chat 1": "QRCodeTelegram.png",
+      "Telegram Chat 2": "QRCodeTelegram2.png",
+      "Telegram Chat 3": "QRCodeTelegram3.png"
+    };
+    function isTelegramLabel(label) { return TELEGRAM_LABELS.has(label); }
+
     const TELEGRAM_MAX_VIDEOS = 25;
     const TELEGRAM_POLL_INTERVAL = 3000;
 
@@ -397,8 +408,9 @@
     const ASPECT_MODE_STORE   = "panoptikon_aspect_mode";
     const OVERLAY_CTRL_STORE  = "panoptikon_overlay_controls";
 
-    let telegramLastLineCount = 0;
+    const telegramLastLineCount = new Map(); // label -> last line count
     let telegramLiveTimer = null;
+
     let ytApiReady = false;
     const playerIntervals = new Map();
     const cache = new Map();
@@ -978,7 +990,7 @@
      ***********************/
     function getSelectedIndex() {
       let v = +localStorage.getItem(STORAGE_SELECTED);
-      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5;
+      if (!Number.isInteger(v) || v < 0 || v >= SOURCES.length) v = 5; // Telegram Chat 1
       return v;
     }
 
@@ -1043,7 +1055,7 @@
         head.className = "source-head";
         const title = document.createElement("div");
         title.className = "source-title";
-        title.textContent = src.label + (src.label === TELEGRAM_LABEL ? " (Live)" : " (Auto)");
+        title.textContent = src.label + (isTelegramLabel(src.label) ? " (Live)" : " (Auto)");
         const countsEl = document.createElement("div");
         countsEl.className = "counts";
         const v = data?.counts?.video || 0;
@@ -1068,7 +1080,7 @@
         let items = (data?.items || []);
         let cols, rows, slots;
 
-        if (src.label === TELEGRAM_LABEL) {
+        if (isTelegramLabel(src.label)) {
           const recent = items.slice(0, 25);
           items = recent;
           cols = 5;
@@ -1154,12 +1166,12 @@
         const label = SOURCES[idx]?.label || "Source";
         let items = getCurrentItemsForIndex(idx).slice(0, MAX_ITEMS);
 
-        if (expandPlaylists && label !== TELEGRAM_LABEL) {
+        if (expandPlaylists && !isTelegramLabel(label)) {
           items = await expandPlaylistsIfEnabled(items, true);
         }
 
         // Apply saved layout for non-telegram
-        if (label !== TELEGRAM_LABEL) {
+        if (!isTelegramLabel(label)) {
           const savedOrder = loadSavedLayout();
           if (Array.isArray(savedOrder) && savedOrder.length) {
             const byKey = new Map(items.map(it => [getItemKey(it), it]));
@@ -1178,7 +1190,7 @@
         }
 
         const forceGridEl = document.getElementById("forceGrid");
-        if (label !== TELEGRAM_LABEL && !forceGridEl.checked) {
+        if (!isTelegramLabel(label) && !forceGridEl.checked) {
           const n = items.length || 1;
           const opt = computeOptimalGrid(n);
           document.getElementById("cols").value = String(opt.cols);
@@ -1188,7 +1200,7 @@
         const settings = getGridSettings();
         let display;
 
-        if (label === TELEGRAM_LABEL) {
+        if (isTelegramLabel(label)) {
           const newestFirst = items.slice(0, TELEGRAM_MAX_VIDEOS);
           const limit = settings.forced ? settings.slots : TELEGRAM_MAX_VIDEOS;
           display = newestFirst.slice(0, limit);
@@ -1201,7 +1213,7 @@
 
         loadedCountEl.textContent =
           `Loaded embeds: ${display.length} from ${label}` +
-          (expandPlaylists && label !== TELEGRAM_LABEL ? " (playlists expanded)" : "");
+          (expandPlaylists && !isTelegramLabel(label) ? " (playlists expanded)" : "");
 
         status.textContent = settings.forced
           ? `Loaded ${display.length}/${settings.slots} slot(s) from ${label}.`
@@ -1315,17 +1327,27 @@
     /***********************
      * Fullscreen + QR overlay
      ***********************/
-    function updateFullscreenQr() {
-      const wrapper = document.getElementById("gridWrapper");
-      const overlay = document.getElementById("qrCodeOverlay");
-      if (!overlay) return;
-      const isFS =
-        document.fullscreenElement === wrapper ||
-        document.webkitFullscreenElement === wrapper;
-      const selectedLabel = SOURCES[getSelectedIndex()]?.label || "";
-      const shouldShow = isFS && selectedLabel === TELEGRAM_LABEL;
-      overlay.classList.toggle("show", !!shouldShow);
-    }
+     function updateFullscreenQr() {
+       const wrapper = document.getElementById("gridWrapper");
+       const overlay = document.getElementById("qrCodeOverlay");
+       if (!overlay) return;
+     
+       const isFS =
+         document.fullscreenElement === wrapper ||
+         document.webkitFullscreenElement === wrapper;
+     
+       const selectedLabel = SOURCES[getSelectedIndex()]?.label || "";
+       const isTelegram = isTelegramLabel(selectedLabel);
+     
+       // Show only in fullscreen + telegram mode
+       overlay.classList.toggle("show", !!(isFS && isTelegram));
+     
+       // If telegram: swap QR image depending on which telegram source is selected
+       if (isTelegram) {
+         overlay.src = TELEGRAM_QR_BY_LABEL[selectedLabel] || "QRCodeTelegram.png";
+       }
+     }
+
 
     function handleFullscreenChange() {
       const wrapper = document.getElementById("gridWrapper");
@@ -1428,7 +1450,7 @@
     async function fetchItems(url) {
       const res = await fetch(url, { credentials: "omit", cache: "no-store" });
       if (!res.ok) {
-        if (url.endsWith("youtube_links.txt")) return [];
+        if (/youtube_links(\d*)\.txt$/i.test(url)) return [];
         throw new Error(`HTTP ${res.status} ${res.statusText}\n${url}`);
       }
 
@@ -1498,77 +1520,84 @@
     }
 
     async function pollTelegramLinks() {
-      const telegramSrc = SOURCES.find(s => s.label === TELEGRAM_LABEL);
-      if (!telegramSrc) return;
+      const telegramSources = SOURCES.filter(s => isTelegramLabel(s.label));
+      if (!telegramSources.length) return;
 
-      try {
-        const res = await fetch(telegramSrc.url + "?_=" + Date.now(), {
-          cache: "no-store",
-          credentials: "omit"
-        });
-        if (!res.ok) {
-          console.warn("Telegram file fetch failed", res.status);
-          return;
-        }
+      for (const telegramSrc of telegramSources) {
+        try {
+          const res = await fetch(telegramSrc.url + "?_=" + Date.now(), {
+            cache: "no-store",
+            credentials: "omit"
+          });
+          if (!res.ok) continue;
 
-        const text = await res.text();
-        const lines = text
-          .split(/\r?\n/)
-          .map(l => l.trim())
-          .filter(Boolean);
+          const text = await res.text();
+          const lines = text
+            .split(/\r?\n/)
+            .map(l => l.trim())
+            .filter(Boolean);
 
-        if (telegramLastLineCount === 0) {
-          telegramLastLineCount = lines.length;
-          return;
-        }
+          const lastCount = telegramLastLineCount.get(telegramSrc.label) || 0;
 
-        if (lines.length <= telegramLastLineCount) return;
-
-        // new lines are at the TOP (newest-first file)
-        const newCount = lines.length - telegramLastLineCount;
-        if (newCount <= 0) return;
-
-        const newLines = lines.slice(0, newCount);
-        telegramLastLineCount = lines.length;
-
-        const existing = (cache.get(TELEGRAM_LABEL)?.items || []);
-        const newItems = newLines.map(parseYouTube).filter(Boolean);
-        if (!newItems.length) return;
-
-        let updated = newItems.concat(existing);
-        if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
-          updated = updated.slice(0, TELEGRAM_MAX_VIDEOS * 3);
-        }
-
-        cache.set(TELEGRAM_LABEL, { items: updated, counts: itemCounts(updated) });
-
-        const selectedLabel = SOURCES[getSelectedIndex()]?.label;
-        if (selectedLabel === TELEGRAM_LABEL) {
-          const settings = getGridSettings();
-
-          // prepend oldest-first so newest ends up at very top
-          for (let i = newItems.length - 1; i >= 0; i--) {
-            prependTelegramItemToGrid(newItems[i], settings);
+          // first poll: initialize counter, do not inject into grid
+          if (lastCount === 0) {
+            telegramLastLineCount.set(telegramSrc.label, lines.length);
+            continue;
           }
 
-          const shownCount = document.querySelectorAll("#grid iframe").length;
-          document.getElementById("loadedCount").textContent =
-            `Loaded embeds: ${shownCount} from Telegram Chat (live)`;
-          document.getElementById("status").textContent =
-            `Live from Telegram: ${shownCount} video${shownCount === 1 ? "" : "s"} (rolling newest-first)`;
-        }
+          if (lines.length <= lastCount) continue;
 
-        buildSourcesPreview();
-      } catch (e) {
-        console.error("Telegram live poll error:", e);
+          // new lines are at the TOP (newest-first file)
+          const newCount = lines.length - lastCount;
+          if (newCount <= 0) continue;
+
+          const newLines = lines.slice(0, newCount);
+          telegramLastLineCount.set(telegramSrc.label, lines.length);
+
+          const existing = (cache.get(telegramSrc.label)?.items || []);
+          const newItems = newLines.map(parseYouTube).filter(Boolean);
+          if (!newItems.length) continue;
+
+          let updated = newItems.concat(existing);
+          if (updated.length > TELEGRAM_MAX_VIDEOS * 3) {
+            updated = updated.slice(0, TELEGRAM_MAX_VIDEOS * 3);
+          }
+
+          cache.set(telegramSrc.label, { items: updated, counts: itemCounts(updated) });
+
+          const selectedLabel = SOURCES[getSelectedIndex()]?.label;
+
+          // Only live-update the grid if THIS telegram source is currently selected
+          if (selectedLabel === telegramSrc.label) {
+            const settings = getGridSettings();
+
+            // prepend oldest-first so newest ends up at very top
+            for (let i = newItems.length - 1; i >= 0; i--) {
+              prependTelegramItemToGrid(newItems[i], settings);
+            }
+
+            const shownCount = document.querySelectorAll("#grid iframe").length;
+            document.getElementById("loadedCount").textContent =
+              `Loaded embeds: ${shownCount} from ${telegramSrc.label} (live)`;
+            document.getElementById("status").textContent =
+              `Live from ${telegramSrc.label}: ${shownCount} video${shownCount === 1 ? "" : "s"} (rolling newest-first)`;
+          }
+
+        } catch (e) {
+          console.error(`Telegram live poll error (${telegramSrc.label}):`, e);
+        }
       }
+
+      buildSourcesPreview();
     }
 
     function startTelegramLive() {
       if (telegramLiveTimer) clearInterval(telegramLiveTimer);
-      const telegramSrc = SOURCES.find(s => s.label === TELEGRAM_LABEL);
-      if (!telegramSrc) return;
-      telegramLastLineCount = 0;
+
+      const telegramSources = SOURCES.filter(s => isTelegramLabel(s.label));
+      if (!telegramSources.length) return;
+
+      telegramLastLineCount.clear();
       telegramLiveTimer = setInterval(pollTelegramLinks, TELEGRAM_POLL_INTERVAL);
     }
 
@@ -1609,3 +1638,4 @@
   </script>
 </body>
 </html>
+

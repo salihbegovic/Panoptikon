@@ -30,3 +30,6 @@ https://docs.google.com/spreadsheets/d/e/2PACX-1vRU3kIRYgXYQvfM6aN-qSLklE3ani0JY
 
 API KEY
 AIzaSyCqWACV98qEukeDyNF6wk7HID_m2XXu8Sc
+
+qr code generator
+https://www.the-qrcode-generator.com/
