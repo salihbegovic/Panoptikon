@@ -1487,6 +1487,51 @@ document.getElementById('resetTgUrlsBtn').addEventListener('click', () => {
 });
 
 /* =====================
+   Crash recovery
+   ===================== */
+let reloadScheduled = false;
+function scheduleReload(reason, delayMs = 4000) {
+  if (reloadScheduled) return;
+  reloadScheduled = true;
+  console.warn(`[Panoptikon] Reloading in ${delayMs}ms — reason: ${reason}`);
+  setTimeout(() => location.reload(), delayMs);
+}
+
+// Catch unhandled JS errors
+window.addEventListener('error', e => {
+  scheduleReload(`unhandled error: ${e.message}`);
+});
+
+// Catch unhandled promise rejections
+window.addEventListener('unhandledrejection', e => {
+  scheduleReload(`unhandled rejection: ${e.reason}`);
+});
+
+// Heartbeat — if the main thread freezes, rAF stops ticking.
+// A Web Worker runs independently and detects the silence.
+const _wSrc = URL.createObjectURL(new Blob([`
+  let last = Date.now();
+  onmessage = () => { last = Date.now(); };
+  setInterval(() => {
+    postMessage('ping');
+    if (Date.now() - last > 30000) {
+      // Main thread hasn't replied in 30 s — post a special reload request.
+      // We can't call location.reload() from a Worker, but we can write to
+      // a BroadcastChannel that a still-alive SW or another listener picks up.
+      postMessage('RELOAD');
+    }
+  }, 5000);
+`], { type: 'text/javascript' }));
+const _watchdog = new Worker(_wSrc);
+_watchdog.onmessage = e => {
+  if (e.data === 'ping') {
+    _watchdog.postMessage('pong');
+  } else if (e.data === 'RELOAD') {
+    scheduleReload('main thread heartbeat timeout');
+  }
+};
+
+/* =====================
    Init
    ===================== */
 function initTgConfig() {
