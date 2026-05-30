@@ -423,6 +423,47 @@
       box-shadow: 0 0 0 3px rgba(125,211,252,.25) inset;
     }
 
+    /* ---- Telegram live cards ---- */
+    .telegram-thumbs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2px;
+      background: #000;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+    }
+    .telegram-thumbs img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .live-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #fff;
+      animation: livepulse 1.2s infinite;
+    }
+    @keyframes livepulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .25; }
+    }
+
     /* ---- Aspect 16:9 mode ---- */
     body.aspect-169 #gridWrapper { overflow-y: auto; overflow-x: hidden; }
     body.aspect-169 #grid { height: auto; }
@@ -451,9 +492,13 @@
     </div>
   </div>
 
-  <div id="savedSection" class="saved-section" style="display:none">
-    <p class="saved-section-title">Saved Panoptika</p>
-    <div id="savedGrid" class="saved-grid"></div>
+  <div id="savedSection" class="saved-section">
+    <p class="saved-section-title">Live Sources</p>
+    <div id="telegramGrid" class="saved-grid"></div>
+    <div id="userSavesWrap" style="display:none">
+      <p class="saved-section-title" style="margin-top:12px">Saved Panoptika</p>
+      <div id="savedGrid" class="saved-grid"></div>
+    </div>
   </div>
 
   <div class="results-area">
@@ -516,6 +561,12 @@ const OVERLAY_STORE = 'panoptikon2_overlay';
 const SAVES_STORE   = 'panoptikon2_saves';
 const ASPECT_STORE  = 'panoptikon2_aspect';
 const POS_PREFIX    = 'panoptikon2_time_';
+
+const TELEGRAM_SOURCES = [
+  { label: 'Telegram Chat 1', url: 'youtube_links.txt'  },
+  { label: 'Telegram Chat 2', url: 'youtube_links2.txt' },
+  { label: 'Telegram Chat 3', url: 'youtube_links3.txt' },
+];
 
 /* =====================
    State
@@ -734,14 +785,14 @@ function updateFooter() {
 /* =====================
    Watch mode
    ===================== */
-function enterWatchMode() {
+function enterWatchMode(gridOverride = null) {
   if (!selectedOrder.length) return;
 
   document.getElementById('pickMode').style.display    = 'none';
   document.getElementById('watchMode').style.display   = 'flex';
 
   const n   = selectedOrder.length;
-  const opt = computeOptimalGrid(n);
+  const opt = gridOverride || computeOptimalGrid(n);
   document.getElementById('colsInput').value  = opt.cols;
   document.getElementById('rowsInput').value  = opt.rows;
   document.getElementById('watchTitle').textContent =
@@ -1040,6 +1091,99 @@ function applyAspectMode() {
 }
 
 /* =====================
+   Telegram live sources
+   ===================== */
+function parseYouTubeUrl(x) {
+  if (!x) return null;
+  x = String(x).trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(x)) return x;
+  if (!/^https?:\/\//i.test(x)) x = 'https://' + x;
+  let u;
+  try { u = new URL(x); } catch { return null; }
+  const host = u.hostname.replace(/^www\./, '');
+  const v    = u.searchParams.get('v');
+  if (host === 'youtu.be') {
+    const id = u.pathname.split('/').filter(Boolean)[0];
+    return (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) ? id : null;
+  }
+  if (!/youtube\.com$/.test(host)) return null;
+  if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+  const m = u.pathname.match(/\/(?:shorts|embed)\/([a-zA-Z0-9_-]{5,})/);
+  return m ? m[1].slice(0, 11) : null;
+}
+
+async function fetchTelegramVideos(url, limit = 4) {
+  try {
+    const r = await fetch(url + '?_=' + Date.now(), { cache: 'no-store', credentials: 'omit' });
+    if (!r.ok) return [];
+    const lines = (await r.text()).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    return lines.map(parseYouTubeUrl).filter(Boolean).slice(0, limit);
+  } catch { return []; }
+}
+
+async function loadTelegramSource(src) {
+  const ids = await fetchTelegramVideos(src.url, 4);
+  if (!ids.length) { alert('No videos found in this Telegram source yet.'); return; }
+  selectedVideos.clear();
+  selectedOrder = [];
+  ids.forEach(id => {
+    selectedVideos.set(id, {
+      title:   id,
+      thumb:   `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      channel: src.label,
+    });
+    selectedOrder.push(id);
+  });
+  updateFooter();
+  enterWatchMode({ cols: 2, rows: 2 });
+}
+
+function renderTelegramCards() {
+  const grid = document.getElementById('telegramGrid');
+  grid.innerHTML = '';
+
+  TELEGRAM_SOURCES.forEach(src => {
+    const card = document.createElement('div');
+    card.className = 'saved-card';
+
+    // Render with placeholders; fill thumbnails after async fetch
+    card.innerHTML = `
+      <div class="telegram-thumbs">
+        ${Array(4).fill('<div class="thumb-placeholder"></div>').join('')}
+      </div>
+      <div class="saved-info">
+        <div class="saved-name" style="display:flex;align-items:center;gap:8px">
+          ${esc(src.label)} <span class="live-badge">LIVE</span>
+        </div>
+        <div class="saved-meta">Loading…</div>
+        <div class="saved-actions">
+          <button class="tg-load-btn primary" style="flex:1" disabled>Load &amp; Watch (2×2)</button>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+
+    fetchTelegramVideos(src.url, 4).then(ids => {
+      const thumbsEl = card.querySelector('.telegram-thumbs');
+      const metaEl   = card.querySelector('.saved-meta');
+      const loadBtn  = card.querySelector('.tg-load-btn');
+
+      metaEl.textContent = ids.length > 0 ? `${ids.length} recent video${ids.length === 1 ? '' : 's'} · 2×2 grid` : 'No videos yet';
+
+      if (ids.length > 0) {
+        thumbsEl.innerHTML = Array.from({ length: 4 }, (_, i) =>
+          ids[i]
+            ? `<img src="https://i.ytimg.com/vi/${ids[i]}/mqdefault.jpg" alt="" loading="lazy" />`
+            : '<div class="thumb-placeholder"></div>'
+        ).join('');
+        loadBtn.disabled = false;
+        loadBtn.addEventListener('click', () => loadTelegramSource(src));
+      }
+    });
+  });
+}
+
+/* =====================
    Save / Load / Delete
    ===================== */
 function getSaves() {
@@ -1084,12 +1228,12 @@ function loadSave(save) {
 }
 
 function renderSavedSection() {
-  const saves   = getSaves();
-  const section = document.getElementById('savedSection');
-  const grid    = document.getElementById('savedGrid');
+  const saves    = getSaves();
+  const wrap     = document.getElementById('userSavesWrap');
+  const grid     = document.getElementById('savedGrid');
 
-  if (!saves.length) { section.style.display = 'none'; return; }
-  section.style.display = '';
+  if (!saves.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
   grid.innerHTML = '';
 
   saves.forEach(save => {
@@ -1197,6 +1341,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
    ===================== */
 initApiKeyDisplay();
 updateFooter();
+renderTelegramCards();
 renderSavedSection();
 aspectMode = localStorage.getItem(ASPECT_STORE) === '169' ? '169' : 'auto';
 </script>
