@@ -635,6 +635,11 @@ let swapMode    = false;
 let firstCell   = null;
 let aspectMode  = 'auto'; // 'auto' | '169'
 
+let activeTelegramSrc   = null;
+let telegramPollTimer   = null;
+let telegramLastCount   = 0;
+const TELEGRAM_POLL_MS  = 3000;
+
 /* =====================
    API Key
    ===================== */
@@ -854,9 +859,53 @@ function enterWatchMode(gridOverride = null) {
 }
 
 function exitWatchMode() {
+  stopTelegramPolling();
   clearPlayersAndTimers();
   document.getElementById('watchMode').style.display = 'none';
   document.getElementById('pickMode').style.display  = '';
+}
+
+function makeGridCell(videoId) {
+  const cell = document.createElement('div');
+  cell.className = 'grid-cell';
+
+  if (videoId) {
+    const ifrId = `pyt_${Date.now()}_${Math.random().toString(36).slice(2,6)}_${videoId}`;
+    const ifr   = document.createElement('iframe');
+    ifr.id = ifrId;
+
+    const p = new URLSearchParams({
+      autoplay: '1', mute: '1', enablejsapi: '1', rel: '0',
+      playsinline: '1', iv_load_policy: '3', loop: '1', playlist: videoId,
+    });
+    ifr.src = `https://www.youtube.com/embed/${videoId}?${p}`;
+    ifr.allow = 'autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen';
+    ifr.setAttribute('allowfullscreen', '');
+    ifr.dataset.vid = videoId;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'video-overlay';
+    overlay.addEventListener('click', ev => {
+      ev.preventDefault();
+      if (clickTimer) clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => { toggleMute(ifrId); clickTimer = null; }, 210);
+    });
+    overlay.addEventListener('dblclick', ev => {
+      ev.preventDefault();
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      toggleGridFullscreen();
+    });
+    cell.appendChild(ifr);
+    cell.appendChild(overlay);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'cell-empty';
+    empty.textContent = 'Empty';
+    cell.appendChild(empty);
+  }
+
+  cell.addEventListener('click', onCellClick);
+  return cell;
 }
 
 function buildGrid() {
@@ -871,57 +920,7 @@ function buildGrid() {
   grid.style.gridTemplateRows    = aspectMode === '169' ? 'auto' : `repeat(${rows}, 1fr)`;
 
   const slots = cols * rows;
-
-  for (let i = 0; i < slots; i++) {
-    const videoId = selectedOrder[i];
-    const cell    = document.createElement('div');
-    cell.className = 'grid-cell';
-
-    if (videoId) {
-      const ifrId = `pyt_${i}_${videoId}`;
-      const ifr   = document.createElement('iframe');
-      ifr.id = ifrId;
-
-      const p = new URLSearchParams({
-        autoplay:       '1',
-        mute:           '1',
-        enablejsapi:    '1',
-        rel:            '0',
-        playsinline:    '1',
-        iv_load_policy: '3',
-        loop:           '1',
-        playlist:       videoId,
-      });
-      ifr.src = `https://www.youtube.com/embed/${videoId}?${p}`;
-      ifr.allow = 'autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen';
-      ifr.setAttribute('allowfullscreen', '');
-      ifr.dataset.vid = videoId;
-
-      const overlay = document.createElement('div');
-      overlay.className = 'video-overlay';
-      overlay.addEventListener('click', ev => {
-        ev.preventDefault();
-        if (clickTimer) clearTimeout(clickTimer);
-        clickTimer = setTimeout(() => { toggleMute(ifrId); clickTimer = null; }, 210);
-      });
-      overlay.addEventListener('dblclick', ev => {
-        ev.preventDefault();
-        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-        toggleGridFullscreen();
-      });
-
-      cell.appendChild(ifr);
-      cell.appendChild(overlay);
-    } else {
-      const empty = document.createElement('div');
-      empty.className = 'cell-empty';
-      empty.textContent = 'Empty';
-      cell.appendChild(empty);
-    }
-
-    cell.addEventListener('click', onCellClick);
-    grid.appendChild(cell);
-  }
+  for (let i = 0; i < slots; i++) grid.appendChild(makeGridCell(selectedOrder[i]));
 
   if (ytApiReady) initPlayers();
 }
@@ -1158,11 +1157,89 @@ function parseYouTubeUrl(x) {
   return m ? m[1].slice(0, 11) : null;
 }
 
-async function fetchTelegramVideos(url, limit = 4) {
+async function fetchTelegramLines(url) {
   const r = await fetch(url + '?_=' + Date.now(), { cache: 'no-store', credentials: 'omit' });
   if (!r.ok) throw new Error(`HTTP ${r.status} — ${url}`);
-  const lines = (await r.text()).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return (await r.text()).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+}
+
+async function fetchTelegramVideos(url, limit = 4) {
+  const lines = await fetchTelegramLines(url);
   return lines.map(parseYouTubeUrl).filter(Boolean).slice(0, limit);
+}
+
+/* =====================
+   Telegram live polling
+   ===================== */
+function startTelegramPolling(src) {
+  stopTelegramPolling();
+  activeTelegramSrc = src;
+  // First fetch just initialises the baseline count
+  fetchTelegramLines(src.url)
+    .then(lines => { telegramLastCount = lines.length; })
+    .catch(() => { telegramLastCount = 0; });
+  telegramPollTimer = setInterval(pollActiveTelegram, TELEGRAM_POLL_MS);
+}
+
+function stopTelegramPolling() {
+  if (telegramPollTimer) { clearInterval(telegramPollTimer); telegramPollTimer = null; }
+  activeTelegramSrc = null;
+}
+
+async function pollActiveTelegram() {
+  if (!activeTelegramSrc) return;
+  try {
+    const lines = await fetchTelegramLines(activeTelegramSrc.url);
+    if (lines.length <= telegramLastCount) return;
+
+    const newLines = lines.slice(0, lines.length - telegramLastCount); // newest first
+    telegramLastCount = lines.length;
+
+    const newIds = newLines.map(parseYouTubeUrl).filter(Boolean);
+    if (!newIds.length) return;
+
+    // Prepend oldest-first so the newest ends up at the top
+    for (let i = newIds.length - 1; i >= 0; i--) {
+      prependVideoToGrid(newIds[i], {
+        title:   newIds[i],
+        thumb:   `https://i.ytimg.com/vi/${newIds[i]}/mqdefault.jpg`,
+        channel: activeTelegramSrc.label,
+      });
+    }
+
+    // Refresh the source card thumbnails on the landing page
+    renderTelegramCards();
+  } catch (e) {
+    console.error('Telegram poll error:', e);
+  }
+}
+
+function prependVideoToGrid(videoId, meta) {
+  const grid     = document.getElementById('grid');
+  const cols     = Math.max(1, +document.getElementById('colsInput').value || 2);
+  const rows     = Math.max(1, +document.getElementById('rowsInput').value || 2);
+  const maxCells = cols * rows;
+
+  // Track in selection
+  selectedVideos.set(videoId, meta);
+  selectedOrder.unshift(videoId);
+
+  // Prepend new cell without touching existing iframes
+  grid.insertBefore(makeGridCell(videoId), grid.firstChild);
+  if (ytApiReady) initPlayers();
+
+  // Remove excess cells from the end
+  while (grid.children.length > maxCells) {
+    const last = grid.lastElementChild;
+    const ifr  = last?.querySelector('iframe');
+    if (ifr) {
+      const iv = playerIntervals.get(ifr.id);
+      if (iv) { clearInterval(iv); playerIntervals.delete(ifr.id); }
+      players.delete(ifr.id);
+    }
+    last?.remove();
+  }
+  if (selectedOrder.length > maxCells) selectedOrder.length = maxCells;
 }
 
 async function loadTelegramSource(src) {
@@ -1180,6 +1257,7 @@ async function loadTelegramSource(src) {
   });
   updateFooter();
   enterWatchMode({ cols: 2, rows: 2 });
+  startTelegramPolling(src);
 }
 
 function renderTelegramCards() {
