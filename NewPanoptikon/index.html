@@ -1243,7 +1243,7 @@ function prependVideoToGrid(videoId, meta) {
 }
 
 async function loadTelegramSource(src) {
-  const ids = await fetchTelegramVideos(src.url, 4);
+  const ids = await fetchTelegramVideos(src.url, 25);
   if (!ids.length) { alert('No videos found in this Telegram source yet.'); return; }
   selectedVideos.clear();
   selectedOrder = [];
@@ -1256,7 +1256,7 @@ async function loadTelegramSource(src) {
     selectedOrder.push(id);
   });
   updateFooter();
-  enterWatchMode({ cols: 2, rows: 2 });
+  enterWatchMode({ cols: 5, rows: 5 });
   startTelegramPolling(src);
 }
 
@@ -1279,7 +1279,7 @@ function renderTelegramCards() {
         </div>
         <div class="saved-meta">Loading…</div>
         <div class="saved-actions">
-          <button class="tg-load-btn primary" style="flex:1" disabled>Load &amp; Watch (2×2)</button>
+          <button class="tg-load-btn primary" style="flex:1" disabled>Load &amp; Watch (5×5)</button>
         </div>
       </div>
     `;
