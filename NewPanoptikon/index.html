@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panoptikon — Build Your Multiview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+      background: #0b0c10;
+      color: #e8ecf1;
+      min-height: 100vh;
+    }
+
+    button {
+      cursor: pointer;
+      border: 1px solid #2a303d;
+      background: #111827;
+      color: #e8ecf1;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    button:hover:not(:disabled) { background: #1a2233; border-color: #3d4a60; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.primary { background: #1a4a8a; border-color: #2563eb; color: #fff; }
+    button.primary:hover:not(:disabled) { background: #1e5aa8; }
+    button.danger { background: #3b1a1a; border-color: #6b2222; color: #ffb3b3; }
+    button.danger:hover:not(:disabled) { background: #501e1e; }
+    button.active { background: #0b3a2b; border-color: #134e4a; }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"] {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #2a303d;
+      background: #0f1320;
+      color: #e8ecf1;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: #3b82f6; }
+
+    .hint { color: #9aa5b1; font-size: 13px; }
+
+    .error-box {
+      background: #2b1414;
+      border: 1px solid #3b1a1a;
+      color: #ffd5d5;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      white-space: pre-wrap;
+      margin: 0 0 12px;
+    }
+
+    /* ==============================
+       PICK MODE
+       ============================== */
+    #pickMode {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .pick-header {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid #1c2230;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      background: #0d1117;
+    }
+    .pick-header h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: .02em;
+      flex-shrink: 0;
+      color: #7dd3fc;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      min-width: 200px;
+    }
+    .search-row input { flex: 1; min-width: 0; }
+
+    .api-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .api-row input { width: 200px; }
+
+    .results-area {
+      flex: 1;
+      padding: 16px 18px;
+    }
+
+    #searchStatus {
+      padding: 40px 20px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 15px;
+    }
+
+    #resultGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .result-card {
+      background: #0d1117;
+      border: 2px solid #1c2230;
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s, box-shadow .1s;
+      user-select: none;
+    }
+    .result-card:hover {
+      border-color: #3d4a60;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    }
+    .result-card.selected {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,.25);
+    }
+
+    .thumb-wrap {
+      position: relative;
+      padding-top: 56.25%;
+      background: #0b0f18;
+      overflow: hidden;
+    }
+    .thumb-wrap img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .sel-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(37, 99, 235, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sel-num {
+      background: #2563eb;
+      color: #fff;
+      font-size: 22px;
+      font-weight: 800;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,.4);
+    }
+
+    .card-info {
+      padding: 7px 9px 9px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 3px;
+    }
+    .card-channel {
+      font-size: 11px;
+      color: #9aa5b1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #loadMoreWrap { text-align: center; padding: 18px 0 8px; }
+
+    /* ---- Bottom sticky footer ---- */
+    .pick-footer {
+      position: sticky;
+      bottom: 0;
+      background: #0d1117;
+      border-top: 1px solid #1c2230;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      z-index: 10;
+    }
+
+    #selectedStrip {
+      display: flex;
+      gap: 5px;
+      overflow-x: auto;
+      flex: 1;
+      min-width: 0;
+      padding: 2px 0;
+    }
+    #selectedStrip::-webkit-scrollbar { height: 4px; }
+    #selectedStrip::-webkit-scrollbar-thumb { background: #2a303d; border-radius: 4px; }
+
+    .strip-thumb {
+      flex-shrink: 0;
+      width: 52px;
+      height: 29px;
+      border-radius: 4px;
+      object-fit: cover;
+      border: 1px solid #2a303d;
+      cursor: pointer;
+      transition: filter .1s, border-color .1s;
+    }
+    .strip-thumb:hover { filter: brightness(.5); border-color: #ef4444; }
+
+    /* ---- Saved Panoptika section ---- */
+    .saved-section {
+      padding: 14px 18px 0;
+      border-bottom: 1px solid #1c2230;
+      margin-bottom: 4px;
+    }
+    .saved-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin: 0 0 10px;
+    }
+    .saved-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .saved-card {
+      background: #0d1117;
+      border: 1px solid #1c2230;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .saved-card:hover {
+      border-color: #2a303d;
+      box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    }
+    .saved-thumbs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      background: #000;
+      aspect-ratio: 16 / 4;
+      overflow: hidden;
+    }
+    .saved-thumbs img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .saved-thumbs .thumb-placeholder {
+      background: repeating-linear-gradient(45deg,#0d1117,#0d1117 6px,#0f1320 6px,#0f1320 12px);
+    }
+    .saved-info {
+      padding: 8px 10px 10px;
+    }
+    .saved-name {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .saved-meta {
+      font-size: 11px;
+      color: #9aa5b1;
+      margin-bottom: 8px;
+    }
+    .saved-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .saved-actions button {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    /* ==============================
+       WATCH MODE
+       ============================== */
+    #watchMode {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .watch-header {
+      flex-shrink: 0;
+      padding: 8px 14px;
+      background: #0d1117;
+      border-bottom: 1px solid #1c2230;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .watch-header h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #9aa5b1;
+      white-space: nowrap;
+    }
+    .watch-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    #gridWrapper {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      background: #000;
+    }
+    #gridWrapper:fullscreen,
+    #gridWrapper:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #grid {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      gap: 3px;
+      background: #000;
+    }
+    #gridWrapper:fullscreen #grid,
+    #gridWrapper:-webkit-full-screen #grid {
+      gap: 1px;
+    }
+
+    .grid-cell {
+      position: relative;
+      background: #0d1117;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .grid-cell iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+    .video-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      cursor: pointer;
+    }
+    body.overlays-off .video-overlay {
+      pointer-events: none;
+    }
+    .cell-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #3a4050;
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      background: repeating-linear-gradient(
+        45deg,
+        #0d1117,
+        #0d1117 8px,
+        #0f1320 8px,
+        #0f1320 16px
+      );
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     PICK MODE
+     ============================================================ -->
+<div id="pickMode">
+
+  <div class="pick-header">
+    <h1>Panoptikon</h1>
+
+    <div class="search-row">
+      <input id="searchInput" type="text" placeholder="Search YouTube videos…" />
+      <button id="searchBtn" class="primary">Search</button>
+    </div>
+
+    <div class="api-row">
+      <input id="apiKeyInput" type="password" placeholder="YouTube Data API key" />
+      <button id="saveKeyBtn">Save Key</button>
+      <span id="keyStatus" class="hint"></span>
+    </div>
+  </div>
+
+  <div id="savedSection" class="saved-section" style="display:none">
+    <p class="saved-section-title">Saved Panoptika</p>
+    <div id="savedGrid" class="saved-grid"></div>
+  </div>
+
+  <div class="results-area">
+    <div id="searchStatus">Enter a search term to find videos, then click to select them.</div>
+    <div id="errorBox" class="error-box" style="display:none"></div>
+    <div id="resultGrid"></div>
+    <div id="loadMoreWrap" style="display:none">
+      <button id="loadMoreBtn">Load More Results</button>
+    </div>
+  </div>
+
+  <div class="pick-footer">
+    <div id="selectedStrip"></div>
+    <span id="selCount" class="hint">0 selected</span>
+    <button id="clearSelBtn" class="danger" style="display:none">Clear All</button>
+    <button id="watchBtn" class="primary" disabled>Watch &#9654;</button>
+  </div>
+
+</div>
+
+<!-- ============================================================
+     WATCH MODE
+     ============================================================ -->
+<div id="watchMode">
+
+  <div class="watch-header">
+    <button id="backBtn">&#8592; Back</button>
+    <h2 id="watchTitle"></h2>
+    <div class="watch-controls">
+      <label class="hint" style="display:flex;gap:6px;align-items:center">
+        Cols <input id="colsInput" type="number" min="1" max="12" style="width:52px" />
+      </label>
+      <label class="hint" style="display:flex;gap:6px;align-items:center">
+        Rows <input id="rowsInput" type="number" min="1" max="12" style="width:52px" />
+      </label>
+      <button id="rebuildBtn">Rebuild</button>
+      <button id="overlayBtn" class="active">Max Mode: ON</button>
+      <button id="fsBtn">Fullscreen</button>
+      <button id="saveBtn">Save Panoptikon</button>
+    </div>
+  </div>
+
+  <div id="gridWrapper">
+    <div id="grid"></div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+/* =====================
+   Constants
+   ===================== */
+const KEY_STORE     = 'panoptikon2_yt_api_key';
+const OVERLAY_STORE = 'panoptikon2_overlay';
+const SAVES_STORE   = 'panoptikon2_saves';
+
+/* =====================
+   State
+   ===================== */
+// Map<videoId, {title, thumb, channel}>
+const selectedVideos = new Map();
+// Array<videoId> — preserves pick order
+let selectedOrder = [];
+
+let currentQuery  = '';
+let nextPageToken = '';
+let searching     = false;
+
+const players         = new Map();
+const playerIntervals = new Map();
+let ytApiReady = false;
+let clickTimer = null;
+let overlaysOn = true;
+
+/* =====================
+   API Key
+   ===================== */
+function getApiKey() {
+  return localStorage.getItem(KEY_STORE) || '';
+}
+
+document.getElementById('saveKeyBtn').addEventListener('click', () => {
+  const val = document.getElementById('apiKeyInput').value.trim();
+  if (!val) {
+    localStorage.removeItem(KEY_STORE);
+    document.getElementById('keyStatus').textContent = 'Cleared.';
+    return;
+  }
+  localStorage.setItem(KEY_STORE, val);
+  document.getElementById('apiKeyInput').value = '••••••••••';
+  document.getElementById('keyStatus').textContent = 'Saved.';
+});
+
+function initApiKeyDisplay() {
+  if (getApiKey()) {
+    document.getElementById('apiKeyInput').value = '••••••••••';
+    document.getElementById('keyStatus').textContent = 'API key saved.';
+  }
+}
+
+/* =====================
+   Search
+   ===================== */
+async function doSearch(query, pageToken) {
+  const key = getApiKey();
+  if (!key) { showError('Please save a YouTube Data API key first.'); return; }
+  if (!query) return;
+
+  const params = new URLSearchParams({
+    key,
+    part: 'snippet',
+    q: query,
+    maxResults: '24',
+    type: 'video',
+    videoEmbeddable: 'true',
+    safeSearch: 'none',
+    order: 'relevance',
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+
+  searching = true;
+  document.getElementById('searchBtn').disabled = true;
+  document.getElementById('loadMoreBtn').disabled = true;
+  setStatus('Searching…');
+  hideError();
+
+  try {
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
+    if (!r.ok) {
+      const txt = await r.text();
+      let msg = `YouTube API error ${r.status}`;
+      try { msg = JSON.parse(txt).error?.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const data = await r.json();
+    nextPageToken = data.nextPageToken || '';
+
+    const items = (data.items || []).filter(it => it.id?.videoId);
+
+    if (!pageToken) document.getElementById('resultGrid').innerHTML = '';
+    appendResults(items);
+
+    setStatus(items.length === 0 && !pageToken ? 'No results found.' : '');
+    document.getElementById('loadMoreWrap').style.display = nextPageToken ? 'block' : 'none';
+  } catch (e) {
+    showError(e.message || String(e));
+    setStatus('');
+  } finally {
+    searching = false;
+    document.getElementById('searchBtn').disabled = false;
+    document.getElementById('loadMoreBtn').disabled = false;
+  }
+}
+
+function appendResults(items) {
+  const grid = document.getElementById('resultGrid');
+
+  items.forEach(item => {
+    const videoId = item.id.videoId;
+    const title   = item.snippet.title;
+    const channel = item.snippet.channelTitle;
+    const thumb   =
+      item.snippet.thumbnails?.medium?.url ||
+      item.snippet.thumbnails?.default?.url ||
+      `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+    const card = makeResultCard(videoId, { title, thumb, channel });
+    grid.appendChild(card);
+  });
+}
+
+function makeResultCard(videoId, meta) {
+  const { title, thumb, channel } = meta;
+  const isSelected = selectedVideos.has(videoId);
+  const orderNum   = selectedOrder.indexOf(videoId) + 1;
+
+  const card = document.createElement('div');
+  card.className = 'result-card' + (isSelected ? ' selected' : '');
+  card.dataset.id = videoId;
+
+  card.innerHTML = `
+    <div class="thumb-wrap">
+      <img src="${esc(thumb)}" alt="" loading="lazy" />
+      ${isSelected ? `<div class="sel-overlay"><div class="sel-num">${orderNum}</div></div>` : ''}
+    </div>
+    <div class="card-info">
+      <div class="card-title">${esc(title)}</div>
+      <div class="card-channel">${esc(channel)}</div>
+    </div>
+  `;
+
+  card.addEventListener('click', () => toggleSelect(videoId, meta));
+  return card;
+}
+
+/* Update every visible card's selected state */
+function refreshResultCards() {
+  document.querySelectorAll('.result-card').forEach(card => {
+    const videoId    = card.dataset.id;
+    const isSelected = selectedVideos.has(videoId);
+    card.classList.toggle('selected', isSelected);
+
+    const thumbWrap = card.querySelector('.thumb-wrap');
+    let overlay = thumbWrap.querySelector('.sel-overlay');
+
+    if (isSelected) {
+      const orderNum = selectedOrder.indexOf(videoId) + 1;
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'sel-overlay';
+        thumbWrap.appendChild(overlay);
+      }
+      overlay.innerHTML = `<div class="sel-num">${orderNum}</div>`;
+    } else {
+      overlay?.remove();
+    }
+  });
+}
+
+/* =====================
+   Selection
+   ===================== */
+function toggleSelect(videoId, meta) {
+  if (selectedVideos.has(videoId)) {
+    selectedVideos.delete(videoId);
+    selectedOrder = selectedOrder.filter(id => id !== videoId);
+  } else {
+    selectedVideos.set(videoId, meta);
+    selectedOrder.push(videoId);
+  }
+  refreshResultCards();
+  updateFooter();
+}
+
+function clearSelection() {
+  selectedVideos.clear();
+  selectedOrder = [];
+  refreshResultCards();
+  updateFooter();
+}
+
+function updateFooter() {
+  const n = selectedOrder.length;
+  document.getElementById('selCount').textContent = `${n} video${n === 1 ? '' : 's'} selected`;
+  document.getElementById('watchBtn').disabled    = n === 0;
+  document.getElementById('clearSelBtn').style.display = n > 0 ? '' : 'none';
+
+  const strip = document.getElementById('selectedStrip');
+  strip.innerHTML = '';
+  selectedOrder.forEach(id => {
+    const meta = selectedVideos.get(id);
+    if (!meta) return;
+    const img     = document.createElement('img');
+    img.className = 'strip-thumb';
+    img.src       = meta.thumb;
+    img.alt       = '';
+    img.title     = `${meta.title} — click to remove`;
+    img.addEventListener('click', () => {
+      selectedVideos.delete(id);
+      selectedOrder = selectedOrder.filter(x => x !== id);
+      refreshResultCards();
+      updateFooter();
+    });
+    strip.appendChild(img);
+  });
+}
+
+/* =====================
+   Watch mode
+   ===================== */
+function enterWatchMode() {
+  if (!selectedOrder.length) return;
+
+  document.getElementById('pickMode').style.display    = 'none';
+  document.getElementById('watchMode').style.display   = 'flex';
+
+  const n   = selectedOrder.length;
+  const opt = computeOptimalGrid(n);
+  document.getElementById('colsInput').value  = opt.cols;
+  document.getElementById('rowsInput').value  = opt.rows;
+  document.getElementById('watchTitle').textContent =
+    `${n} video${n === 1 ? '' : 's'}`;
+
+  overlaysOn = localStorage.getItem(OVERLAY_STORE) !== '0';
+  applyOverlayState();
+
+  buildGrid();
+  ensureYtApi();
+}
+
+function exitWatchMode() {
+  clearPlayersAndTimers();
+  document.getElementById('watchMode').style.display = 'none';
+  document.getElementById('pickMode').style.display  = '';
+}
+
+function buildGrid() {
+  const cols = Math.max(1, Math.min(12, +document.getElementById('colsInput').value || 3));
+  const rows = Math.max(1, Math.min(12, +document.getElementById('rowsInput').value || 3));
+
+  clearPlayersAndTimers();
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  grid.style.gridTemplateRows    = `repeat(${rows}, 1fr)`;
+
+  const slots = cols * rows;
+
+  for (let i = 0; i < slots; i++) {
+    const videoId = selectedOrder[i];
+    const cell    = document.createElement('div');
+    cell.className = 'grid-cell';
+
+    if (videoId) {
+      const ifrId = `pyt_${i}_${videoId}`;
+      const ifr   = document.createElement('iframe');
+      ifr.id = ifrId;
+
+      const p = new URLSearchParams({
+        autoplay:       '1',
+        mute:           '1',
+        enablejsapi:    '1',
+        rel:            '0',
+        playsinline:    '1',
+        iv_load_policy: '3',
+        loop:           '1',
+        playlist:       videoId,
+      });
+      ifr.src = `https://www.youtube.com/embed/${videoId}?${p}`;
+      ifr.allow = 'autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen';
+      ifr.setAttribute('allowfullscreen', '');
+      ifr.dataset.vid = videoId;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'video-overlay';
+      overlay.addEventListener('click', ev => {
+        ev.preventDefault();
+        if (clickTimer) clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => { toggleMute(ifrId); clickTimer = null; }, 210);
+      });
+      overlay.addEventListener('dblclick', ev => {
+        ev.preventDefault();
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+        toggleGridFullscreen();
+      });
+
+      cell.appendChild(ifr);
+      cell.appendChild(overlay);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'cell-empty';
+      empty.textContent = 'Empty';
+      cell.appendChild(empty);
+    }
+
+    grid.appendChild(cell);
+  }
+
+  if (ytApiReady) initPlayers();
+}
+
+/* =====================
+   YouTube IFrame API
+   ===================== */
+function ensureYtApi() {
+  if (window.YT && YT.Player) { ytApiReady = true; initPlayers(); return; }
+  if (document.getElementById('yt-api-script')) return;
+  const s = document.createElement('script');
+  s.id  = 'yt-api-script';
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+  window.onYouTubeIframeAPIReady = () => { ytApiReady = true; initPlayers(); };
+}
+
+function initPlayers() {
+  document.querySelectorAll('#grid iframe[data-vid]').forEach(ifr => {
+    if (ifr.dataset.bound === '1') return;
+    const p = new YT.Player(ifr.id, {
+      events: { onReady: e => { try { e.target.playVideo(); } catch {} } }
+    });
+    players.set(ifr.id, p);
+    ifr.dataset.bound = '1';
+  });
+}
+
+function clearPlayersAndTimers() {
+  for (const iv of playerIntervals.values()) clearInterval(iv);
+  playerIntervals.clear();
+  players.clear();
+}
+
+function toggleMute(ifrId) {
+  const p = players.get(ifrId);
+  if (!p) return;
+  try { if (p.isMuted()) p.unMute(); else p.mute(); } catch {}
+}
+
+/* =====================
+   Fullscreen
+   ===================== */
+function toggleGridFullscreen() {
+  const wrapper = document.getElementById('gridWrapper');
+  const isFs    = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if (isFs) {
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  } else {
+    (wrapper.requestFullscreen || wrapper.webkitRequestFullscreen)?.call(wrapper);
+  }
+}
+
+/* =====================
+   Overlay / max mode
+   ===================== */
+function applyOverlayState() {
+  document.body.classList.toggle('overlays-off', !overlaysOn);
+  const btn = document.getElementById('overlayBtn');
+  btn.textContent = overlaysOn ? 'Max Mode: ON' : 'Max Mode: OFF';
+  btn.classList.toggle('active', overlaysOn);
+}
+
+/* =====================
+   Helpers
+   ===================== */
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('searchStatus');
+  el.textContent    = msg;
+  el.style.display  = msg ? 'block' : 'none';
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent   = msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+function computeOptimalGrid(n) {
+  n = Math.max(1, Math.min(144, n));
+  let best = { cols: 1, rows: n };
+  let bestWaste = n, bestAspect = Infinity;
+  for (let c = 1; c <= Math.min(12, n); c++) {
+    const r = Math.ceil(n / c);
+    if (r > 12) continue;
+    const waste = c * r - n;
+    const aspect = Math.abs(c - r);
+    if (waste < bestWaste || (waste === bestWaste && aspect < bestAspect)) {
+      best = { cols: c, rows: r };
+      bestWaste = waste;
+      bestAspect = aspect;
+    }
+  }
+  return best;
+}
+
+/* =====================
+   Save / Load / Delete
+   ===================== */
+function getSaves() {
+  try { return JSON.parse(localStorage.getItem(SAVES_STORE) || '[]'); } catch { return []; }
+}
+
+function savePanoptikon(name) {
+  const saves  = getSaves();
+  const videos = selectedOrder.map(id => ({ id, ...selectedVideos.get(id) }));
+  saves.unshift({
+    id:      Date.now().toString(36) + Math.random().toString(36).slice(2),
+    name,
+    savedAt: new Date().toISOString(),
+    videos,
+  });
+  localStorage.setItem(SAVES_STORE, JSON.stringify(saves));
+}
+
+function deleteSave(saveId) {
+  const saves = getSaves().filter(s => s.id !== saveId);
+  localStorage.setItem(SAVES_STORE, JSON.stringify(saves));
+  renderSavedSection();
+}
+
+function loadSave(save) {
+  selectedVideos.clear();
+  selectedOrder = [];
+  save.videos.forEach(v => {
+    selectedVideos.set(v.id, { title: v.title, thumb: v.thumb, channel: v.channel });
+    selectedOrder.push(v.id);
+  });
+  refreshResultCards();
+  updateFooter();
+  enterWatchMode();
+}
+
+function renderSavedSection() {
+  const saves   = getSaves();
+  const section = document.getElementById('savedSection');
+  const grid    = document.getElementById('savedGrid');
+
+  if (!saves.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  grid.innerHTML = '';
+
+  saves.forEach(save => {
+    const date = new Date(save.savedAt).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+    const n = save.videos.length;
+
+    const card = document.createElement('div');
+    card.className = 'saved-card';
+
+    // Thumbnail strip — up to 8 slots, fill empties with placeholder
+    const thumbSlots = Array.from({ length: 8 }, (_, i) => {
+      const v = save.videos[i];
+      return v
+        ? `<img src="${esc(v.thumb)}" alt="" loading="lazy" />`
+        : `<div class="thumb-placeholder"></div>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="saved-thumbs">${thumbSlots}</div>
+      <div class="saved-info">
+        <div class="saved-name" title="${esc(save.name)}">${esc(save.name)}</div>
+        <div class="saved-meta">${n} video${n === 1 ? '' : 's'} &middot; ${date}</div>
+        <div class="saved-actions">
+          <button class="load-btn primary" style="flex:1">Load &amp; Watch</button>
+          <button class="del-btn danger">Delete</button>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('.load-btn').addEventListener('click', () => loadSave(save));
+    card.querySelector('.del-btn').addEventListener('click', () => {
+      if (confirm(`Delete "${save.name}"?`)) deleteSave(save.id);
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+/* =====================
+   Event wiring
+   ===================== */
+document.getElementById('searchBtn').addEventListener('click', () => {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q || searching) return;
+  currentQuery  = q;
+  nextPageToken = '';
+  doSearch(q, '');
+});
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('searchBtn').click();
+});
+
+document.getElementById('loadMoreBtn').addEventListener('click', () => {
+  if (!searching) doSearch(currentQuery, nextPageToken);
+});
+
+document.getElementById('clearSelBtn').addEventListener('click', clearSelection);
+
+document.getElementById('watchBtn').addEventListener('click', enterWatchMode);
+
+document.getElementById('backBtn').addEventListener('click', exitWatchMode);
+
+document.getElementById('rebuildBtn').addEventListener('click', buildGrid);
+
+document.getElementById('fsBtn').addEventListener('click', toggleGridFullscreen);
+
+document.getElementById('overlayBtn').addEventListener('click', () => {
+  overlaysOn = !overlaysOn;
+  localStorage.setItem(OVERLAY_STORE, overlaysOn ? '1' : '0');
+  applyOverlayState();
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const defaultName = `Panoptikon ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const name = prompt('Name this Panoptikon:', defaultName);
+  if (name === null) return;
+  const trimmed = name.trim() || defaultName;
+  savePanoptikon(trimmed);
+  const btn = document.getElementById('saveBtn');
+  btn.textContent = 'Saved!';
+  setTimeout(() => { btn.textContent = 'Save Panoptikon'; }, 1600);
+});
+
+/* =====================
+   Init
+   ===================== */
+initApiKeyDisplay();
+updateFooter();
+renderSavedSection();
+</script>
+</body>
+</html>
