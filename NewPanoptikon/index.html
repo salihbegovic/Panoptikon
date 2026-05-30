@@ -408,6 +408,25 @@
         #0f1320 16px
       );
     }
+
+    /* ---- Swap mode ---- */
+    .swap-mode .grid-cell { cursor: crosshair; }
+    .swap-mode .grid-cell iframe { pointer-events: none; filter: saturate(.9) brightness(.93); }
+    .swap-mode .video-overlay { pointer-events: none; }
+    .grid-cell.swap-pending {
+      outline: 2px dashed #a78bfa;
+      box-shadow: 0 0 0 3px rgba(167,139,250,.25) inset;
+      z-index: 1;
+    }
+    .grid-cell.swap-highlight {
+      outline: 2px solid #7dd3fc;
+      box-shadow: 0 0 0 3px rgba(125,211,252,.25) inset;
+    }
+
+    /* ---- Aspect 16:9 mode ---- */
+    body.aspect-169 #gridWrapper { overflow-y: auto; overflow-x: hidden; }
+    body.aspect-169 #grid { height: auto; }
+    body.aspect-169 .grid-cell { aspect-ratio: 16 / 9; }
   </style>
 </head>
 <body>
@@ -471,6 +490,9 @@
         Rows <input id="rowsInput" type="number" min="1" max="12" style="width:52px" />
       </label>
       <button id="rebuildBtn">Rebuild</button>
+      <button id="aspectBtn">Aspect: Auto-fit</button>
+      <button id="swapBtn">Swap Mode</button>
+      <button id="resetBtn">Reset Progress</button>
       <button id="overlayBtn" class="active">Max Mode: ON</button>
       <button id="fsBtn">Fullscreen</button>
       <button id="saveBtn">Save Panoptikon</button>
@@ -492,6 +514,8 @@
 const KEY_STORE     = 'panoptikon2_yt_api_key';
 const OVERLAY_STORE = 'panoptikon2_overlay';
 const SAVES_STORE   = 'panoptikon2_saves';
+const ASPECT_STORE  = 'panoptikon2_aspect';
+const POS_PREFIX    = 'panoptikon2_time_';
 
 /* =====================
    State
@@ -507,9 +531,12 @@ let searching     = false;
 
 const players         = new Map();
 const playerIntervals = new Map();
-let ytApiReady = false;
-let clickTimer = null;
-let overlaysOn = true;
+let ytApiReady  = false;
+let clickTimer  = null;
+let overlaysOn  = true;
+let swapMode    = false;
+let firstCell   = null;
+let aspectMode  = 'auto'; // 'auto' | '169'
 
 /* =====================
    API Key
@@ -722,6 +749,8 @@ function enterWatchMode() {
 
   overlaysOn = localStorage.getItem(OVERLAY_STORE) !== '0';
   applyOverlayState();
+  applyAspectMode();
+  setSwapMode(false);
 
   buildGrid();
   ensureYtApi();
@@ -742,7 +771,7 @@ function buildGrid() {
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  grid.style.gridTemplateRows    = `repeat(${rows}, 1fr)`;
+  grid.style.gridTemplateRows    = aspectMode === '169' ? 'auto' : `repeat(${rows}, 1fr)`;
 
   const slots = cols * rows;
 
@@ -793,6 +822,7 @@ function buildGrid() {
       cell.appendChild(empty);
     }
 
+    cell.addEventListener('click', onCellClick);
     grid.appendChild(cell);
   }
 
@@ -815,10 +845,32 @@ function ensureYtApi() {
 function initPlayers() {
   document.querySelectorAll('#grid iframe[data-vid]').forEach(ifr => {
     if (ifr.dataset.bound === '1') return;
+    const vid = ifr.dataset.vid;
     const p = new YT.Player(ifr.id, {
-      events: { onReady: e => { try { e.target.playVideo(); } catch {} } }
+      events: {
+        onReady: e => {
+          try {
+            const t = loadTime(vid);
+            if (t > 1) e.target.seekTo(t, true);
+            e.target.playVideo();
+          } catch {}
+        },
+        onStateChange: e => {
+          try {
+            const cur = e.target.getCurrentTime?.();
+            if (Number.isFinite(cur)) saveTime(vid, cur);
+          } catch {}
+        }
+      }
     });
     players.set(ifr.id, p);
+    const iv = setInterval(() => {
+      try {
+        const cur = p.getCurrentTime();
+        if (Number.isFinite(cur)) saveTime(vid, cur);
+      } catch {}
+    }, 3000);
+    playerIntervals.set(ifr.id, iv);
     ifr.dataset.bound = '1';
   });
 }
@@ -901,6 +953,90 @@ function computeOptimalGrid(n) {
     }
   }
   return best;
+}
+
+/* =====================
+   Progress (timestamps)
+   ===================== */
+function saveTime(videoId, seconds) {
+  try { localStorage.setItem(POS_PREFIX + videoId, String(Math.floor(seconds))); } catch {}
+}
+
+function loadTime(videoId) {
+  const v = +localStorage.getItem(POS_PREFIX + videoId);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+function resetProgress() {
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith(POS_PREFIX)) localStorage.removeItem(k);
+  });
+  buildGrid();
+}
+
+/* =====================
+   Swap mode
+   ===================== */
+function setSwapMode(on) {
+  swapMode = !!on;
+  firstCell = null;
+  document.body.classList.toggle('swap-mode', swapMode);
+  document.querySelectorAll('.grid-cell').forEach(c =>
+    c.classList.remove('swap-pending', 'swap-highlight')
+  );
+  const btn = document.getElementById('swapBtn');
+  btn.textContent = swapMode ? 'Swap Mode: ON' : 'Swap Mode';
+  btn.classList.toggle('active', swapMode);
+}
+
+function onCellClick(e) {
+  if (!swapMode) return;
+  const cell = e.currentTarget;
+  if (cell.querySelector('.cell-empty')) return; // ignore empty cells
+  e.stopPropagation();
+
+  if (!firstCell) {
+    firstCell = cell;
+    cell.classList.add('swap-pending');
+    return;
+  }
+  if (cell === firstCell) {
+    firstCell.classList.remove('swap-pending');
+    firstCell = null;
+    return;
+  }
+
+  // Swap DOM nodes — iframes keep playing
+  const parent = firstCell.parentNode;
+  const aNext  = firstCell.nextSibling;
+  const bNext  = cell.nextSibling;
+
+  if (aNext === cell)       parent.insertBefore(cell, firstCell);
+  else if (bNext === firstCell) parent.insertBefore(firstCell, cell);
+  else {
+    parent.insertBefore(firstCell, bNext);
+    parent.insertBefore(cell, aNext);
+  }
+
+  firstCell.classList.remove('swap-pending');
+  cell.classList.add('swap-highlight');
+  setTimeout(() => cell.classList.remove('swap-highlight'), 350);
+  firstCell = null;
+}
+
+/* =====================
+   Aspect ratio mode
+   ===================== */
+function applyAspectMode() {
+  document.body.classList.toggle('aspect-169', aspectMode === '169');
+  const btn = document.getElementById('aspectBtn');
+  btn.textContent = aspectMode === '169' ? 'Aspect: 16:9' : 'Aspect: Auto-fit';
+  btn.classList.toggle('active', aspectMode === '169');
+  // Re-apply grid rows without rebuilding iframes
+  const grid = document.getElementById('grid');
+  const cols = +document.getElementById('colsInput').value || 3;
+  const rows = +document.getElementById('rowsInput').value || 3;
+  grid.style.gridTemplateRows = aspectMode === '169' ? 'auto' : `repeat(${rows}, 1fr)`;
 }
 
 /* =====================
@@ -1014,6 +1150,22 @@ document.getElementById('backBtn').addEventListener('click', exitWatchMode);
 
 document.getElementById('rebuildBtn').addEventListener('click', buildGrid);
 
+document.getElementById('aspectBtn').addEventListener('click', () => {
+  aspectMode = aspectMode === '169' ? 'auto' : '169';
+  localStorage.setItem(ASPECT_STORE, aspectMode);
+  applyAspectMode();
+});
+
+document.getElementById('swapBtn').addEventListener('click', () => setSwapMode(!swapMode));
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (confirm('Clear all saved playback positions and restart videos?')) resetProgress();
+});
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && swapMode) setSwapMode(false);
+});
+
 document.getElementById('fsBtn').addEventListener('click', toggleGridFullscreen);
 
 document.getElementById('overlayBtn').addEventListener('click', () => {
@@ -1039,6 +1191,7 @@ document.getElementById('saveBtn').addEventListener('click', () => {
 initApiKeyDisplay();
 updateFooter();
 renderSavedSection();
+aspectMode = localStorage.getItem(ASPECT_STORE) === '169' ? '169' : 'auto';
 </script>
 </body>
 </html>
