@@ -464,6 +464,27 @@
       50%       { opacity: .25; }
     }
 
+    /* ---- Source config panel ---- */
+    .src-config {
+      padding: 12px 18px 14px;
+      background: #0a0e18;
+      border-bottom: 1px solid #1c2230;
+      display: none;
+    }
+    .src-config.open { display: block; }
+    .src-config-grid {
+      display: grid;
+      gap: 7px;
+      margin: 8px 0 12px;
+    }
+    .src-config-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .src-config-row label { color: #9aa5b1; font-size: 13px; min-width: 60px; }
+    .src-config-row input { flex: 1; }
+
     /* ---- Aspect 16:9 mode ---- */
     body.aspect-169 #gridWrapper { overflow-y: auto; overflow-x: hidden; }
     body.aspect-169 #grid { height: auto; }
@@ -489,6 +510,20 @@
       <input id="apiKeyInput" type="password" placeholder="YouTube Data API key" />
       <button id="saveKeyBtn">Save Key</button>
       <span id="keyStatus" class="hint"></span>
+      <button id="configToggleBtn" style="margin-left:4px;font-size:12px;padding:5px 10px">&#9881; Sources</button>
+    </div>
+  </div>
+
+  <div id="srcConfig" class="src-config">
+    <span class="hint">URLs to the YouTube link text files (one URL per line, newest first):</span>
+    <div class="src-config-grid">
+      <div class="src-config-row"><label>Chat 1</label><input id="tgUrl1" type="text" placeholder="../youtube_links.txt" /></div>
+      <div class="src-config-row"><label>Chat 2</label><input id="tgUrl2" type="text" placeholder="../youtube_links2.txt" /></div>
+      <div class="src-config-row"><label>Chat 3</label><input id="tgUrl3" type="text" placeholder="../youtube_links3.txt" /></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="saveTgUrlsBtn" class="primary">Save &amp; Reload Cards</button>
+      <button id="resetTgUrlsBtn">Reset to Defaults</button>
     </div>
   </div>
 
@@ -562,11 +597,22 @@ const SAVES_STORE   = 'panoptikon2_saves';
 const ASPECT_STORE  = 'panoptikon2_aspect';
 const POS_PREFIX    = 'panoptikon2_time_';
 
-const TELEGRAM_SOURCES = [
-  { label: 'Telegram Chat 1', url: '../youtube_links.txt'  },
-  { label: 'Telegram Chat 2', url: '../youtube_links2.txt' },
-  { label: 'Telegram Chat 3', url: '../youtube_links3.txt' },
-];
+const TELEGRAM_LABELS   = ['Telegram Chat 1', 'Telegram Chat 2', 'Telegram Chat 3'];
+const TG_DEFAULT_URLS   = ['../youtube_links.txt', '../youtube_links2.txt', '../youtube_links3.txt'];
+const TG_URLS_STORE     = 'panoptikon2_tg_urls';
+
+function getTgUrls() {
+  try {
+    const v = JSON.parse(localStorage.getItem(TG_URLS_STORE) || 'null');
+    if (Array.isArray(v) && v.length === 3) return v;
+  } catch {}
+  return [...TG_DEFAULT_URLS];
+}
+
+function getTelegramSources() {
+  const urls = getTgUrls();
+  return TELEGRAM_LABELS.map((label, i) => ({ label, url: urls[i] }));
+}
 
 /* =====================
    State
@@ -1140,7 +1186,7 @@ function renderTelegramCards() {
   const grid = document.getElementById('telegramGrid');
   grid.innerHTML = '';
 
-  TELEGRAM_SOURCES.forEach(src => {
+  getTelegramSources().forEach(src => {
     const card = document.createElement('div');
     card.className = 'saved-card';
 
@@ -1336,10 +1382,39 @@ document.getElementById('saveBtn').addEventListener('click', () => {
   setTimeout(() => { btn.textContent = 'Save Panoptikon'; }, 1600);
 });
 
+document.getElementById('configToggleBtn').addEventListener('click', () => {
+  document.getElementById('srcConfig').classList.toggle('open');
+});
+
+document.getElementById('saveTgUrlsBtn').addEventListener('click', () => {
+  const urls = [
+    document.getElementById('tgUrl1').value.trim(),
+    document.getElementById('tgUrl2').value.trim(),
+    document.getElementById('tgUrl3').value.trim(),
+  ];
+  localStorage.setItem(TG_URLS_STORE, JSON.stringify(urls));
+  document.getElementById('srcConfig').classList.remove('open');
+  renderTelegramCards();
+});
+
+document.getElementById('resetTgUrlsBtn').addEventListener('click', () => {
+  localStorage.removeItem(TG_URLS_STORE);
+  initTgConfig();
+  renderTelegramCards();
+});
+
 /* =====================
    Init
    ===================== */
+function initTgConfig() {
+  const urls = getTgUrls();
+  document.getElementById('tgUrl1').value = urls[0];
+  document.getElementById('tgUrl2').value = urls[1];
+  document.getElementById('tgUrl3').value = urls[2];
+}
+
 initApiKeyDisplay();
+initTgConfig();
 updateFooter();
 renderTelegramCards();
 renderSavedSection();
