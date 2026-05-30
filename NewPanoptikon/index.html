@@ -500,6 +500,7 @@
 
   <div class="pick-header">
     <h1>Panoptikon</h1>
+    <button id="refreshBtn" title="Refresh page" style="font-size:18px;padding:6px 12px">&#8635;</button>
 
     <div class="search-row">
       <input id="searchInput" type="text" placeholder="Search YouTube videos…" />
@@ -561,6 +562,7 @@
 
   <div class="watch-header">
     <button id="backBtn">&#8592; Back</button>
+    <button id="refreshBtn2" title="Refresh page" style="font-size:18px;padding:6px 12px">&#8635;</button>
     <h2 id="watchTitle"></h2>
     <div class="watch-controls">
       <label class="hint" style="display:flex;gap:6px;align-items:center">
@@ -1459,6 +1461,9 @@ document.getElementById('saveBtn').addEventListener('click', () => {
   btn.textContent = 'Saved!';
   setTimeout(() => { btn.textContent = 'Save Panoptikon'; }, 1600);
 });
+
+document.getElementById('refreshBtn').addEventListener('click', () => location.reload());
+document.getElementById('refreshBtn2').addEventListener('click', () => location.reload());
 
 document.getElementById('configToggleBtn').addEventListener('click', () => {
   document.getElementById('srcConfig').classList.toggle('open');
