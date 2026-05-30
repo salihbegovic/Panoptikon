@@ -517,9 +517,9 @@
   <div id="srcConfig" class="src-config">
     <span class="hint">URLs to the YouTube link text files (one URL per line, newest first):</span>
     <div class="src-config-grid">
-      <div class="src-config-row"><label>Chat 1</label><input id="tgUrl1" type="text" placeholder="../youtube_links.txt" /></div>
-      <div class="src-config-row"><label>Chat 2</label><input id="tgUrl2" type="text" placeholder="../youtube_links2.txt" /></div>
-      <div class="src-config-row"><label>Chat 3</label><input id="tgUrl3" type="text" placeholder="../youtube_links3.txt" /></div>
+      <div class="src-config-row"><label>Chat 1</label><input id="tgUrl1" type="text" placeholder="youtube_links.txt" /></div>
+      <div class="src-config-row"><label>Chat 2</label><input id="tgUrl2" type="text" placeholder="youtube_links2.txt" /></div>
+      <div class="src-config-row"><label>Chat 3</label><input id="tgUrl3" type="text" placeholder="youtube_links3.txt" /></div>
     </div>
     <div style="display:flex;gap:8px">
       <button id="saveTgUrlsBtn" class="primary">Save &amp; Reload Cards</button>
@@ -598,7 +598,7 @@ const ASPECT_STORE  = 'panoptikon2_aspect';
 const POS_PREFIX    = 'panoptikon2_time_';
 
 const TELEGRAM_LABELS   = ['Telegram Chat 1', 'Telegram Chat 2', 'Telegram Chat 3'];
-const TG_DEFAULT_URLS   = ['../youtube_links.txt', '../youtube_links2.txt', '../youtube_links3.txt'];
+const TG_DEFAULT_URLS   = ['youtube_links.txt', 'youtube_links2.txt', 'youtube_links3.txt'];
 const TG_URLS_STORE     = 'panoptikon2_tg_urls';
 
 function getTgUrls() {
