@@ -1048,7 +1048,14 @@ function getSaves() {
 
 function savePanoptikon(name) {
   const saves  = getSaves();
-  const videos = selectedOrder.map(id => ({ id, ...selectedVideos.get(id) }));
+  // Read from DOM so swapped positions are captured
+  const videos = Array.from(document.querySelectorAll('#grid .grid-cell iframe[data-vid]'))
+    .map(ifr => {
+      const id   = ifr.dataset.vid;
+      const meta = selectedVideos.get(id);
+      return meta ? { id, ...meta } : null;
+    })
+    .filter(Boolean);
   saves.unshift({
     id:      Date.now().toString(36) + Math.random().toString(36).slice(2),
     name,
