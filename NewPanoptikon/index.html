@@ -1037,20 +1037,10 @@ function hideError() {
 
 function computeOptimalGrid(n) {
   n = Math.max(1, Math.min(144, n));
-  let best = { cols: 1, rows: n };
-  let bestWaste = n, bestAspect = Infinity;
-  for (let c = 1; c <= Math.min(12, n); c++) {
-    const r = Math.ceil(n / c);
-    if (r > 12) continue;
-    const waste = c * r - n;
-    const aspect = Math.abs(c - r);
-    if (waste < bestWaste || (waste === bestWaste && aspect < bestAspect)) {
-      best = { cols: c, rows: r };
-      bestWaste = waste;
-      bestAspect = aspect;
-    }
-  }
-  return best;
+  // Square-ish grid: 4 → 2×2, 9 → 3×3, 5–6 → 3×2, 7–8 → 3×3, …
+  const cols = Math.min(12, Math.ceil(Math.sqrt(n)));
+  const rows = Math.min(12, Math.ceil(n / cols));
+  return { cols, rows };
 }
 
 /* =====================
@@ -1258,7 +1248,7 @@ async function loadTelegramSource(src) {
     selectedOrder.push(id);
   });
   updateFooter();
-  enterWatchMode({ cols: 5, rows: 5 });
+  enterWatchMode();
   startTelegramPolling(src);
 }
 
@@ -1421,7 +1411,7 @@ document.getElementById('loadMoreBtn').addEventListener('click', () => {
 
 document.getElementById('clearSelBtn').addEventListener('click', clearSelection);
 
-document.getElementById('watchBtn').addEventListener('click', enterWatchMode);
+document.getElementById('watchBtn').addEventListener('click', () => enterWatchMode());
 
 document.getElementById('backBtn').addEventListener('click', exitWatchMode);
 
