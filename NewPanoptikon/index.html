@@ -1248,7 +1248,7 @@ async function loadTelegramSource(src) {
     selectedOrder.push(id);
   });
   updateFooter();
-  enterWatchMode();
+  enterWatchMode({ cols: 5, rows: 5 });
   startTelegramPolling(src);
 }
 
