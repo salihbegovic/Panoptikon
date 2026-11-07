@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(find /home/salihbegovic -maxdepth 2 -type d -name *[Nn]ew*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(ln -sf ../youtube_links.txt youtube_links.txt)",
+      "Bash(ln -sf ../youtube_links2.txt youtube_links2.txt)",
+      "Bash(ln -sf ../youtube_links3.txt youtube_links3.txt)",
+      "Bash(ls -la youtube_links*.txt)"
+    ]
+  }
+}
